@@ -1,0 +1,46 @@
+# Australia stock watchlist — Tech stocks only
+
+software:
+  - XRO       # Xero
+  - WTC       # WiseTech Global
+  - ALU       # Altium
+  - TNE       # TechnologyOne
+  - APX       # Appen
+  - FCL       # Fineos
+  - PXA       # Pexa Group
+  - DUB       # Dubber
+
+data_centres_and_infrastructure:
+  - NXT       # NextDC
+  - MP1       # Megaport
+
+fintech_and_payments:
+  - CPU       # Computershare
+  - TYR       # Tyro Payments
+  - SQ2       # Block (Square AU)
+  - LNK       # Link Administration
+
+hardware_and_semiconductor:
+  - BRN       # Brainchip Holdings
+  - AD8       # Audinate Group
+
+healthtech:
+  - PME       # Pro Medicus
+
+healthcare:
+  - NAN       # Nanosonics
+  - VHT       # Volpara Health Technologies
+  - SHL       # Sonic Healthcare
+
+internet_and_media:
+  - REA       # REA Group
+  - SEK       # Seek Limited
+  - CAR       # CAR Group (Carsales)
+
+telecom:
+  - TPM       # TPG Telecom
+  - ABB       # Aussie Broadband
+
+ev_and_energy:
+  - NVX       # Novonix (battery materials)
+  - LPI       # Lithium Power International

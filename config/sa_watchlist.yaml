@@ -1,0 +1,23 @@
+# Saudi Arabia stock watchlist — Tech stocks only
+# Tadawul numeric codes, no .SR suffix
+
+telecom:
+  - "7010"    # STC (Saudi Telecom)
+  - "7020"    # Etihad Etisalat (Mobily)
+  - "7030"    # Zain KSA
+  - "7040"    # Dawiyat (Integrated Telecom)
+
+technology:
+  - "9512"    # Elm Company
+  - "4003"    # Extra (United Electronics)
+
+healthcare:
+  - "4013"    # Al Mouwasat Medical Services
+  - "4002"    # National Medical Care Company
+  - "4004"    # Dallah Healthcare
+
+internet_and_media:
+  - "4072"    # Arabian Internet and Communications Services (solutions)
+  - "7203"    # Saudi Research and Media Group
+
+# Note: No SA fintech stocks with sufficient listing as of analysis date

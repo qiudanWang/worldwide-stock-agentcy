@@ -1,0 +1,26 @@
+# Brazil stock watchlist — Tech stocks only
+# B3 tickers, no .SA suffix
+
+software:
+  - TOTS3     # TOTVS
+  - LWSA3     # Locaweb
+
+fintech_and_payments:
+  - PAGS34    # PagSeguro (BDR)
+  - STNE34    # StoneCo (BDR)
+  - CASH3     # Meliuz
+
+mobile_and_digital:
+  - BMOB3     # Bemobi Mobile Tech
+
+hardware_and_electronics:
+  - INTB3     # Intelbras
+
+healthcare:
+  - RDOR3     # Rede D'Or São Luiz
+  - FLRY3     # Fleury
+  - HAPV3     # Hapvida Participacoes
+
+internet_and_media:
+  - MELI34    # MercadoLibre (BDR)
+  - MGLU3     # Magazine Luiza

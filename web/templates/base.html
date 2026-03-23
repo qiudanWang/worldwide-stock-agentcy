@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Global Tech Market{% endblock %}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+            background: #0a0e17;
+            color: #c9d1d9;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        nav {
+            background: #161b22;
+            border-bottom: 1px solid #30363d;
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            position: sticky;
+            top: 0;
+            z-index: 300;
+        }
+        nav .logo {
+            color: #58a6ff;
+            font-weight: 700;
+            font-size: 16px;
+            text-decoration: none;
+        }
+        nav a {
+            color: #8b949e;
+            text-decoration: none;
+            font-size: 13px;
+        }
+        nav a:hover, nav a.active { color: #c9d1d9; }
+        nav .nav-divider { color: #30363d; }
+.container { max-width: 1800px; margin: 0; padding: 24px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+        .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; }
+        .card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 16px;
+        }
+        .card h2 {
+            font-size: 14px;
+            color: #8b949e;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+            border-bottom: 1px solid #21262d;
+            padding-bottom: 8px;
+        }
+        .card h2 a { color: inherit; text-decoration: none; }
+        .card h2 a:hover { color: #58a6ff; }
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid #21262d;
+        }
+        .stat-row:last-child { border-bottom: none; }
+        .stat-label { color: #8b949e; }
+        .stat-value { color: #c9d1d9; font-weight: 600; }
+        table { width: 100%; border-collapse: collapse; }
+        th {
+            text-align: left;
+            padding: 8px 10px;
+            color: #8b949e;
+            font-size: 12px;
+            text-transform: uppercase;
+            border-bottom: 1px solid #30363d;
+            position: sticky;
+            top: 0;
+            background: #161b22;
+        }
+        td {
+            padding: 6px 10px;
+            border-bottom: 1px solid #21262d;
+            font-size: 13px;
+        }
+        tr:hover { background: #1c2128; }
+        .up { color: #3fb950; }
+        .down { color: #f85149; }
+        .flat { color: #8b949e; }
+        .tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .tag-volume { background: #1f1206; color: #d29922; border: 1px solid #d29922; }
+        .tag-news { background: #0d1d30; color: #58a6ff; border: 1px solid #58a6ff; }
+        .tag-capital { background: #0d2818; color: #3fb950; border: 1px solid #3fb950; }
+        .tag-peer { background: #1c0d2b; color: #bc8cff; border: 1px solid #bc8cff; }
+        .tag-macro { background: #1a1206; color: #e3b341; border: 1px solid #e3b341; }
+        .tag-sector { background: #0d2d1a; color: #56d364; border: 1px solid #56d364; }
+        .tag-cross { background: #261230; color: #db61a2; border: 1px solid #db61a2; }
+        .tag-index { background: #0d2d30; color: #79c0ff; border: 1px solid #79c0ff; }
+        .alert-item {
+            padding: 10px 12px;
+            border-left: 3px solid #30363d;
+            margin-bottom: 8px;
+            background: #1c2128;
+            border-radius: 0 4px 4px 0;
+        }
+        .empty { color: #484f58; text-align: center; padding: 24px; }
+        .badge {
+            display: inline-block;
+            background: #30363d;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 12px;
+            margin-left: 6px;
+        }
+        .score-bar {
+            display: inline-block;
+            height: 6px;
+            border-radius: 3px;
+            background: #58a6ff;
+            vertical-align: middle;
+        }
+        .full-width { grid-column: 1 / -1; }
+        .scroll-table { max-height: 400px; overflow-y: auto; }
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .header-row h1 { font-size: 18px; color: #c9d1d9; }
+        .header-row .meta { color: #484f58; font-size: 12px; }
+        .market-tabs {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+        .market-tab {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            text-decoration: none;
+            color: #8b949e;
+            background: #21262d;
+            border: 1px solid #30363d;
+        }
+        .market-tab:hover { color: #c9d1d9; border-color: #58a6ff; }
+        .market-tab.active { color: #58a6ff; border-color: #58a6ff; background: #0d1d30; }
+        .index-ribbon {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            overflow-x: auto;
+        }
+        .index-chip {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 8px 14px;
+            min-width: 120px;
+            flex-shrink: 0;
+        }
+        .index-chip .label { color: #8b949e; font-size: 11px; }
+        .index-chip .value { font-size: 15px; font-weight: 600; color: #c9d1d9; }
+        .index-chip .change { font-size: 12px; font-weight: 600; }
+        .macro-card {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .macro-card .indicator-name { color: #8b949e; font-size: 11px; }
+        .macro-card .indicator-value { font-size: 18px; font-weight: 700; }
+        .macro-card .indicator-change { font-size: 12px; }
+    </style>
+    <style>
+        /* ── Global Chat Panel ────────────────────────────────────── */
+        .chat-panel { position: fixed; top: 47px; right: -370px; width: 350px; min-width: 280px; max-width: 80vw; height: calc(100vh - 47px); background: #0d1117; border-left: 2px solid #30363d; border-top: 1px solid #30363d; display: flex; flex-direction: column; z-index: 200; transition: right 0.3s ease; box-shadow: -4px 0 20px rgba(0,0,0,0.5); }
+        .chat-panel.open { right: 0; }
+        .chat-panel.resizing { transition: none; user-select: none; }
+        .chat-resize-handle { position: absolute; top: 0; left: -4px; width: 8px; height: 100%; cursor: col-resize; z-index: 210; }
+        .chat-resize-handle:hover, .chat-resize-handle:active { background: rgba(88,166,255,0.3); }
+        body.chat-resizing .agents-container, body.chat-resizing .container { transition: none; }
+        .chat-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: #161b22; border-bottom: 1px solid #30363d; flex-shrink: 0; gap: 8px; }
+        .chat-agent-info { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+        .chat-agent-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+        .chat-agent-dot.market { background: #4a90d9; }
+        .chat-agent-dot.global { background: #3fb950; }
+        .chat-agent-select { background: #0d1117; border: 1px solid #30363d; color: #c9d1d9; font-size: 12px; font-weight: 600; padding: 3px 6px; border-radius: 4px; cursor: pointer; outline: none; flex: 1; min-width: 0; }
+        .chat-agent-select:focus { border-color: #58a6ff; }
+        .chat-close { background: none; border: 1px solid #30363d; color: #8b949e; font-size: 18px; cursor: pointer; width: 28px; height: 28px; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; flex-shrink: 0; }
+        .chat-close:hover { color: #f85149; border-color: #f85149; }
+        .chat-messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+        .chat-messages::-webkit-scrollbar { width: 6px; }
+        .chat-messages::-webkit-scrollbar-track { background: #0d1117; }
+        .chat-messages::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+        .chat-msg { max-width: 88%; padding: 8px 12px; border-radius: 8px; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+        .chat-msg.agent { align-self: flex-start; background: #161b22; border: 1px solid #21262d; color: #c9d1d9; }
+        .chat-msg.md-content { white-space: normal; }
+        .chat-msg.md-content p { margin: 0 0 6px; }
+        .chat-msg.md-content p:last-child { margin-bottom: 0; }
+        .chat-msg.md-content h1,.chat-msg.md-content h2,.chat-msg.md-content h3,.chat-msg.md-content h4,.chat-msg.md-content h5,.chat-msg.md-content h6 { color: #e6edf3; margin: 8px 0 4px; font-size: 13px; }
+        .chat-msg.md-content h1 { font-size: 15px; }
+        .chat-msg.md-content ul,.chat-msg.md-content ol { padding-left: 16px; margin: 4px 0; }
+        .chat-msg.md-content li { margin: 2px 0; }
+        .chat-msg.md-content code { background: #1c2128; border: 1px solid #30363d; border-radius: 3px; padding: 1px 4px; font-size: 11px; font-family: monospace; }
+        .chat-msg.md-content pre { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 10px 12px; overflow-x: auto; margin: 6px 0; }
+        .chat-msg.md-content pre code { background: none; border: none; padding: 0; font-size: 11px; line-height: 1.5; }
+        .chat-msg.md-content blockquote { border-left: 3px solid #30363d; padding-left: 10px; color: #8b949e; margin: 6px 0; }
+        .chat-msg.md-content table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 11px; }
+        .chat-msg.md-content th { background: #1c2128; padding: 4px 8px; border: 1px solid #30363d; text-align: left; }
+        .chat-msg.md-content td { padding: 4px 8px; border: 1px solid #21262d; }
+        .chat-msg.md-content hr { border: none; border-top: 1px solid #21262d; margin: 8px 0; }
+        .chat-msg.user { align-self: flex-end; background: #1f3a5f; border: 1px solid #264f78; color: #e6edf3; }
+        .chat-msg-row { display: flex; align-items: flex-start; gap: 8px; }
+        .chat-msg-row .chat-avatar { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+        .chat-typing { align-self: flex-start; padding: 8px 12px; font-size: 12px; color: #8b949e; }
+        .chat-typing .dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: #8b949e; margin: 0 1px; animation: typingBounce 1.2s infinite; }
+        .chat-typing .dot:nth-child(2) { animation-delay: 0.2s; }
+        .chat-typing .dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typingBounce { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-4px); } }
+        .chat-input-row { display: flex; gap: 8px; padding: 12px; background: #161b22; border-top: 1px solid #30363d; flex-shrink: 0; }
+        .chat-input-row input { flex: 1; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; padding: 8px 12px; font-size: 12px; font-family: monospace; outline: none; transition: border-color 0.15s; }
+        .chat-input-row input:focus { border-color: #58a6ff; }
+        .chat-input-row input::placeholder { color: #484f58; }
+        .chat-input-row button { background: #238636; border: 1px solid #2ea043; color: #fff; padding: 8px 16px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.15s; }
+        .chat-input-row button:hover { background: #2ea043; }
+        .chat-suggestions { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 12px 8px; flex-shrink: 0; }
+        .chat-suggestion { background: #21262d; border: 1px solid #30363d; color: #8b949e; padding: 3px 8px; border-radius: 12px; font-size: 11px; cursor: pointer; transition: all 0.15s; }
+        .chat-suggestion:hover { color: #c9d1d9; border-color: #58a6ff; }
+        .chat-body { display: flex; flex-direction: column; flex: 1; overflow: hidden; position: relative; }
+        .chat-main { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-width: 0; }
+        /* Conversation history floating panel */
+        .conv-list-panel { display: none; position: absolute; top: 8px; left: 10px; right: 10px; max-height: 70%; background: #161b22; border: 1px solid #30363d; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.6); z-index: 50; flex-direction: column; overflow: hidden; }
+        .conv-list-panel.open { display: flex; }
+        .conv-list-header { padding: 10px 14px 8px; font-size: 11px; font-weight: 600; color: #8b949e; border-bottom: 1px solid #21262d; flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
+        .conv-list-scroll { flex: 1; overflow-y: auto; padding: 4px 0; }
+        .conv-list-scroll::-webkit-scrollbar { width: 4px; }
+        .conv-list-scroll::-webkit-scrollbar-thumb { background: #30363d; border-radius: 2px; }
+        .conv-item { display: flex; align-items: center; gap: 8px; padding: 8px 14px; cursor: pointer; transition: background 0.1s; }
+        .conv-item:hover { background: #1c2128; }
+        .conv-item.active { background: #1c2128; border-left: 2px solid #58a6ff; padding-left: 12px; }
+        .conv-item-icon { font-size: 14px; flex-shrink: 0; }
+        .conv-item-body { flex: 1; min-width: 0; }
+        .conv-item-title { font-size: 12px; color: #c9d1d9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .conv-item-meta { display: flex; align-items: center; gap: 6px; }
+        .conv-item-agent { font-size: 10px; color: #58a6ff; }
+        .conv-item-date { font-size: 10px; color: #484f58; }
+        .conv-item-del { opacity: 0; background: none; border: none; color: #484f58; cursor: pointer; font-size: 11px; padding: 2px 4px; transition: color 0.1s, opacity 0.1s; }
+        .conv-item:hover .conv-item-del { opacity: 1; }
+        .conv-item-del:hover { color: #f85149; }
+        .conv-group-label { padding: 8px 14px 3px; font-size: 10px; color: #484f58; text-transform: uppercase; letter-spacing: 0.5px; }
+        .conv-empty { padding: 24px 14px; color: #484f58; font-size: 12px; text-align: center; }
+        /* Watchlist tag */
+        .watch-tag { background: #0d2137; border: 1px solid #1f6feb; color: #58a6ff; padding: 4px 12px; border-radius: 12px; font-size: 11px; cursor: pointer; transition: all 0.15s; margin: 0 12px 8px; display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; }
+        .watch-tag:hover { background: #1f6feb33; }
+        #watch-modal { display: none; position: fixed; inset: 0; background: #000a; z-index: 1000; align-items: center; justify-content: center; }
+        #watch-modal.open { display: flex; }
+        .watch-modal-box { background: #161b22; border: 1px solid #30363d; border-radius: 10px; width: 500px; max-height: 82vh; display: flex; flex-direction: column; overflow: hidden; }
+        .watch-modal-header { padding: 12px 16px; border-bottom: 1px solid #30363d; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+        .watch-modal-header h3 { margin: 0; font-size: 14px; color: #c9d1d9; }
+        .watch-modal-body { overflow-y: auto; flex: 1; }
+        .wm-section { padding: 10px 16px 6px; font-size: 11px; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #21262d; }
+        .wrec-row { display: flex; align-items: center; gap: 8px; padding: 7px 16px; border-bottom: 1px solid #21262d; transition: background 0.1s; }
+        .wrec-row:hover { background: #1c2128; }
+        .wrec-ticker { font-weight: 700; color: #c9d1d9; font-size: 12px; min-width: 64px; }
+        .wrec-name { color: #8b949e; font-size: 11px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .wrec-ret { font-size: 11px; min-width: 50px; text-align: right; font-weight: 600; }
+        .wrec-price { font-size: 11px; color: #8b949e; min-width: 60px; text-align: right; }
+        .wdir-btn { background: #21262d; border: 1px solid #30363d; color: #8b949e; padding: 2px 6px; border-radius: 4px; font-size: 10px; cursor: pointer; white-space: nowrap; }
+        .wdir-btn.above { border-color: #3fb95080; color: #3fb950; }
+        .wdir-btn.below { border-color: #f8514980; color: #f85149; }
+        .walert-input { width: 72px; background: #0d1117; border: 1px solid #30363d; color: #c9d1d9; padding: 2px 5px; border-radius: 4px; font-size: 11px; outline: none; }
+        .walert-input:focus { border-color: #58a6ff; }
+        .wadd-btn { background: #238636; border: 1px solid #2ea043; color: #fff; padding: 2px 9px; border-radius: 4px; font-size: 11px; cursor: pointer; white-space: nowrap; }
+        .wadd-btn:hover { background: #2ea043; }
+        .wadd-btn:disabled { background: #21262d; border-color: #30363d; color: #8b949e; cursor: default; }
+        .wcustom-row { display: flex; align-items: center; gap: 6px; padding: 10px 16px; border-bottom: 1px solid #21262d; }
+        .wcustom-row input,.wcustom-row select { background: #0d1117; border: 1px solid #30363d; color: #c9d1d9; padding: 4px 7px; border-radius: 4px; font-size: 11px; outline: none; }
+        .wcustom-row input:focus,.wcustom-row select:focus { border-color: #58a6ff; }
+        .wlist-item { display: flex; align-items: center; gap: 8px; padding: 7px 16px; border-bottom: 1px solid #21262d; font-size: 11px; }
+        .wlist-ticker { font-weight: 700; color: #c9d1d9; min-width: 64px; }
+        .wlist-cond { flex: 1; color: #8b949e; }
+        .wlist-del { background: none; border: 1px solid #30363d; color: #8b949e; cursor: pointer; font-size: 11px; padding: 2px 8px; border-radius: 4px; }
+        .wlist-del:hover { border-color: #f85149; color: #f85149; }
+        #watch-toast-container { position: fixed; top: 70px; right: 20px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; }
+        .watch-toast { background: #161b22; border: 1px solid #3fb950; border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #c9d1d9; box-shadow: 0 4px 12px #0006; min-width: 260px; animation: slideIn 0.2s ease; }
+        .watch-toast.triggered { border-color: #d29922; }
+        @keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        /* Chat FAB */
+        .chat-fab { position: fixed; bottom: 24px; right: 24px; width: 44px; height: 44px; border-radius: 50%; background: #1f6feb; border: none; color: #fff; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.5); z-index: 195; display: flex; align-items: center; justify-content: center; transition: background 0.15s, transform 0.15s, opacity 0.2s; }
+        .chat-fab:hover { background: #388bfd; transform: scale(1.07); }
+        .chat-fab.hidden { opacity: 0; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/" class="logo">Global Tech Market Monitor</a>
+        <a href="/">Dashboard</a>
+        <a href="/agents">Agents</a>
+        <span class="nav-divider">|</span>
+        <a href="/market">Markets</a>
+        <a href="/macro">Macro</a>
+        <a href="/sectors">Sectors</a>
+        <a href="/news">News</a>
+        <a href="/alerts">Alerts</a>
+        <a href="/peers">Groups</a>
+        <a href="/backtest">Backtest</a>
+        <span style="flex:1;"></span>
+        <button onclick="toggleChat()" title="Chat with agents" style="background:none;border:1px solid #30363d;color:#8b949e;padding:5px 10px;border-radius:6px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all 0.15s;" onmouseover="this.style.color='#c9d1d9';this.style.borderColor='#58a6ff'" onmouseout="this.style.color='#8b949e';this.style.borderColor='#30363d'"><svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h12v9H8.5L5 14v-3H2V2z"/></svg> Chat</button>
+    </nav>
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+
+<!-- ── Global Chat Widget ──────────────────────────────────────── -->
+
+<!-- LLM Settings Panel -->
+<div id="llm-settings-panel" style="display:none;position:fixed;top:60px;right:16px;z-index:500;background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;width:340px;box-shadow:0 8px 24px rgba(0,0,0,0.5);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <span style="color:#c9d1d9;font-weight:600;font-size:13px;">&#9881; LLM Settings</span>
+        <button onclick="toggleLLMSettings()" style="background:none;border:none;color:#8b949e;cursor:pointer;font-size:16px;">&times;</button>
+    </div>
+    <label style="display:block;color:#8b949e;font-size:11px;margin-bottom:4px;">API Key</label>
+    <input id="llm-api-key" type="password" placeholder="sk-..." style="width:100%;box-sizing:border-box;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:6px 8px;border-radius:4px;font-size:12px;margin-bottom:10px;">
+    <label style="display:block;color:#8b949e;font-size:11px;margin-bottom:4px;">Base URL</label>
+    <input id="llm-base-url" type="text" placeholder="https://api.openai.com/v1" style="width:100%;box-sizing:border-box;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:6px 8px;border-radius:4px;font-size:12px;margin-bottom:10px;">
+    <label style="display:block;color:#8b949e;font-size:11px;margin-bottom:4px;">Model</label>
+    <input id="llm-model" type="text" placeholder="gpt-4o-mini" style="width:100%;box-sizing:border-box;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:6px 8px;border-radius:4px;font-size:12px;margin-bottom:12px;">
+    <div style="display:flex;gap:8px;align-items:center;">
+        <button onclick="saveLLMSettings()" style="background:#238636;border:1px solid #2ea043;color:#fff;padding:6px 16px;border-radius:4px;font-size:12px;cursor:pointer;font-weight:600;">Save</button>
+        <span id="llm-save-msg" style="color:#8b949e;font-size:11px;"></span>
+    </div>
+</div>
+
+<!-- Chat Panel -->
+<div id="agent-chat-panel" class="chat-panel">
+    <div class="chat-resize-handle" id="chat-resize-handle"></div>
+    <div class="chat-header">
+        <div class="chat-agent-info">
+            <span class="chat-agent-dot" id="chat-agent-dot"></span>
+            <select id="chat-agent-select" class="chat-agent-select" onchange="switchChatAgent(this.value)">
+                <option value="global">🌍 Global</option>
+                {% for code in global_market_codes %}
+                <option value="{{ code }}_market">{{ code }} Market</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;">
+            <button class="chat-close" onclick="toggleConvList()" title="Conversation history" id="conv-list-btn" style="display:flex;align-items:center;justify-content:center;opacity:0.5;" onmouseover="this.style.opacity='1'" onmouseout="if(!document.getElementById('conv-list-panel').classList.contains('open'))this.style.opacity='0.5'"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="5.5"/><polyline points="7,4 7,7 9,8.5"/></svg></button>
+            <button class="chat-close" onclick="newConversation()" title="New conversation" style="font-size:15px;font-weight:300;">&#43;</button>
+            <button class="chat-close" onclick="toggleLLMSettings()" title="LLM settings" style="font-size:13px;">&#9881;</button>
+            <button class="chat-close" onclick="closeChat()">&times;</button>
+        </div>
+    </div>
+    <div class="chat-body">
+        <div class="conv-list-panel" id="conv-list-panel">
+            <div class="conv-list-header"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.6"><circle cx="7" cy="7" r="5.5"/><polyline points="7,4 7,7 9,8.5"/></svg> Conversations</div>
+            <div class="conv-list-scroll" id="conv-list-scroll"></div>
+        </div>
+        <div class="chat-main">
+            <div class="chat-messages" id="chat-messages"></div>
+            <div class="chat-suggestions" id="chat-suggestions"></div>
+            <span class="watch-tag" onclick="openWatchModal()">👁 Watchlist <span id="wl-count" style="display:none;background:#1f6feb;color:#fff;border-radius:8px;padding:0 5px;margin-left:2px;font-size:10px;"></span></span>
+            <div class="chat-input-row">
+                <input type="text" id="chat-input" placeholder="Ask about markets..." onkeydown="if(event.key==='Enter')sendMessage()" />
+                <button onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Watch Modal -->
+<div id="watch-modal">
+    <div class="watch-modal-box">
+        <div class="watch-modal-header">
+            <h3>👁 Watchlist</h3>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <button onclick="toggleEmailSettings()" id="email-settings-btn" style="background:none;border:1px solid #30363d;color:#8b949e;cursor:pointer;font-size:11px;padding:3px 8px;border-radius:4px;" title="Email alert settings">✉ Email</button>
+                <button onclick="closeWatchModal()" style="background:none;border:none;color:#8b949e;cursor:pointer;font-size:18px;">&times;</button>
+            </div>
+        </div>
+        <div id="email-settings-panel" style="display:none;padding:12px 16px;background:#0d1117;border-bottom:1px solid #30363d;">
+            <div style="color:#8b949e;font-size:11px;margin-bottom:8px;">Alert emails are sent when a price target is hit.<br>For Gmail: use an <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color:#58a6ff;">App Password</a>.</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                <div><div style="color:#8b949e;font-size:10px;margin-bottom:3px;">SMTP Host</div><input id="email-smtp-host" type="text" value="smtp.gmail.com" style="width:100%;box-sizing:border-box;background:#161b22;border:1px solid #30363d;color:#c9d1d9;padding:4px 7px;border-radius:4px;font-size:11px;outline:none;" /></div>
+                <div><div style="color:#8b949e;font-size:10px;margin-bottom:3px;">SMTP Port</div><input id="email-smtp-port" type="number" value="587" style="width:100%;box-sizing:border-box;background:#161b22;border:1px solid #30363d;color:#c9d1d9;padding:4px 7px;border-radius:4px;font-size:11px;outline:none;" /></div>
+                <div><div style="color:#8b949e;font-size:10px;margin-bottom:3px;">SMTP User</div><input id="email-smtp-user" type="email" placeholder="you@gmail.com" style="width:100%;box-sizing:border-box;background:#161b22;border:1px solid #30363d;color:#c9d1d9;padding:4px 7px;border-radius:4px;font-size:11px;outline:none;" /></div>
+                <div><div style="color:#8b949e;font-size:10px;margin-bottom:3px;">App Password</div><input id="email-smtp-password" type="password" placeholder="xxxx xxxx xxxx xxxx" style="width:100%;box-sizing:border-box;background:#161b22;border:1px solid #30363d;color:#c9d1d9;padding:4px 7px;border-radius:4px;font-size:11px;outline:none;" /></div>
+            </div>
+            <div><div style="color:#8b949e;font-size:10px;margin-bottom:3px;">Recipient Email</div><input id="email-recipient" type="email" placeholder="you@gmail.com" style="width:100%;box-sizing:border-box;background:#161b22;border:1px solid #30363d;color:#c9d1d9;padding:4px 7px;border-radius:4px;font-size:11px;outline:none;margin-bottom:8px;" /></div>
+            <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#8b949e;cursor:pointer;margin-bottom:8px;"><input type="checkbox" id="email-enabled" /> Enable email alerts</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <button onclick="saveEmailConfig()" style="background:#238636;border:1px solid #2ea043;color:#fff;padding:4px 12px;border-radius:4px;font-size:11px;cursor:pointer;">Save</button>
+                <button onclick="testEmail()" style="background:#21262d;border:1px solid #30363d;color:#8b949e;padding:4px 12px;border-radius:4px;font-size:11px;cursor:pointer;">Test</button>
+                <span id="email-save-msg" style="font-size:11px;"></span>
+            </div>
+        </div>
+        <div class="watch-modal-body" id="watch-modal-body"></div>
+    </div>
+</div>
+
+<!-- Toast container -->
+<div id="watch-toast-container"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+    // ── Global Chat System ──────────────────────────────────────────
+    const _LANG_MAP = { en: 'English', zh: 'Chinese', ja: 'Japanese', ko: 'Korean' };
+    const PAGE_LANGUAGE = _LANG_MAP['{{ current_lang }}'] || 'English';
+
+    const I18N = {
+        greetingMarket:    {{ tv('agents.greeting_market')    | tojson }},
+        greetingGlobal:    {{ tv('agents.greeting_global')    | tojson }},
+        suggestionsMarket: {{ tv('agents.suggestions_market') | tojson }},
+        suggestionsGlobal: {{ tv('agents.suggestions_global') | tojson }},
+        quickMacro:        {{ tv('agents.quick_macro')        | tojson }},
+        quickSectors:      {{ tv('agents.quick_sectors')      | tojson }},
+        quickCorrelations: {{ tv('agents.quick_correlations') | tojson }},
+        quickPeers:        {{ tv('agents.quick_peers')        | tojson }},
+    };
+
+    const AGENT_GREETINGS = {
+        market: (market) => I18N.greetingMarket.replace('{market}', market),
+        global: () => I18N.greetingGlobal,
+    };
+    const AGENT_SUGGESTIONS = {
+        market: I18N.suggestionsMarket,
+        global: I18N.suggestionsGlobal,
+    };
+
+    function getAgentType(agentName) {
+        if (agentName === 'global') return 'global';
+        return 'market';
+    }
+    function getAgentMarket(agentName) {
+        if (agentName === 'global') return 'ALL';
+        return agentName.substring(0, agentName.lastIndexOf('_'));
+    }
+    function getAgentDisplayName(agentName) {
+        if (agentName === 'global') return 'Global Strategist';
+        const market = agentName.substring(0, agentName.lastIndexOf('_'));
+        return `${market} Market Agent`;
+    }
+
+    // Align chat panel top with the nav bar bottom
+    function syncChatPanelPosition() {
+        const nav = document.querySelector('nav');
+        const panel = document.getElementById('agent-chat-panel');
+        if (!nav || !panel) return;
+        const navBottom = nav.getBoundingClientRect().bottom;
+        panel.style.top = navBottom + 'px';
+        panel.style.height = `calc(100vh - ${navBottom}px)`;
+    }
+
+    function toggleChat() {
+        const panel = document.getElementById('agent-chat-panel');
+        if (panel.classList.contains('open')) {
+            closeChat();
+        } else {
+            openChat(currentChatAgent || 'global');
+        }
+    }
+
+    function openChat(agentName) {
+        syncChatPanelPosition();
+        currentChatAgent = agentName;
+        const panel = document.getElementById('agent-chat-panel');
+        panel.classList.add('open');
+        document.body.classList.add('chat-open');
+        const container = document.querySelector('.agents-container');
+        if (container) container.style.marginRight = panel.offsetWidth + 'px';
+        // Sync selector
+        const sel = document.getElementById('chat-agent-select');
+        if (sel) sel.value = agentName;
+        _setAgentHeader(agentName);
+        _ensureActiveConv(agentName);
+        _showChatView();
+        document.getElementById('chat-input').focus();
+    }
+
+    function switchChatAgent(agentName) {
+        currentChatAgent = agentName;
+        _setAgentHeader(agentName);
+        _ensureActiveConv(agentName);
+        _showChatView();
+        document.getElementById('chat-input').focus();
+    }
+
+    function _setAgentHeader(agentName) {
+        const agentType = getAgentType(agentName);
+        document.getElementById('chat-agent-dot').className = 'chat-agent-dot ' + agentType;
+        const suggestions = AGENT_SUGGESTIONS[agentType] || [];
+        document.getElementById('chat-suggestions').innerHTML = suggestions.map(s =>
+            `<span class="chat-suggestion" onclick="useSuggestion('${s.replace(/'/g,"\\'")}')">${s}</span>`
+        ).join('');
+    }
+
+    function _ensureActiveConv(agentName) {
+        const agentType = getAgentType(agentName);
+        const market = getAgentMarket(agentName);
+        let conv = _getActiveConv(agentName);
+        if (!conv) {
+            conv = _createConv(agentName);
+            const greetingFn = AGENT_GREETINGS[agentType];
+            const greeting = greetingFn ? (agentType === 'global' ? greetingFn() : greetingFn(market)) : 'Hello.';
+            conv.messages.push({ role: 'agent', text: greeting });
+            conv.updatedAt = new Date().toISOString();
+            _saveConversations();
+        }
+        renderMessages(agentName);
+    }
+
+    // ── Conversations ───────────────────────────────────────────────
+    const CONV_KEY = 'agentConversations_v2';
+    let _conversations = [];
+    let _activeConvId = {};
+    let currentChatAgent = null;
+    let _convListOpen = false;
+
+    (function _loadConversations() {
+        try {
+            const d = JSON.parse(localStorage.getItem(CONV_KEY) || '{}');
+            _conversations = d.conversations || [];
+            _activeConvId  = d.activeConvId  || {};
+        } catch(e) { _conversations = []; _activeConvId = {}; }
+    })();
+
+    function _saveConversations() {
+        try {
+            const trimmed = _conversations.slice(-100).map(c => ({
+                ...c, messages: c.messages.slice(-50)
+            }));
+            localStorage.setItem(CONV_KEY, JSON.stringify({ conversations: trimmed, activeConvId: _activeConvId }));
+        } catch(e) {}
+    }
+
+    const chatHistories = new Proxy({}, {
+        get(_, agentName) {
+            const conv = _getActiveConv(agentName);
+            return conv ? conv.messages : undefined;
+        },
+        set(_, agentName, messages) {
+            let conv = _getActiveConv(agentName) || _createConv(agentName);
+            conv.messages = messages;
+            conv.title = _convTitle(conv);
+            conv.updatedAt = new Date().toISOString();
+            _saveConversations();
+            return true;
+        },
+    });
+
+    function saveChatHistories() {
+        for (const [agentName, convId] of Object.entries(_activeConvId)) {
+            const conv = _conversations.find(c => c.id === convId);
+            if (conv) { conv.title = _convTitle(conv); conv.updatedAt = new Date().toISOString(); }
+        }
+        _saveConversations();
+    }
+
+    function _createConv(agentName) {
+        const conv = { id: Date.now().toString(36) + Math.random().toString(36).slice(2), agentName, title: 'New conversation', messages: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+        _conversations.push(conv);
+        _activeConvId[agentName] = conv.id;
+        _saveConversations();
+        return conv;
+    }
+
+    function _getActiveConv(agentName) {
+        const id = _activeConvId[agentName];
+        return id ? _conversations.find(c => c.id === id) : null;
+    }
+
+    function _convTitle(conv) {
+        const userMsg = conv.messages.find(m => m.role === 'user');
+        return userMsg ? userMsg.text.slice(0, 40) : 'New conversation';
+    }
+
+    function newConversation() {
+        if (!currentChatAgent) return;
+        delete _activeConvId[currentChatAgent];
+        _saveConversations();
+        _ensureActiveConv(currentChatAgent);
+        _showChatView();
+        document.getElementById('chat-input').focus();
+    }
+
+    function toggleConvList() {
+        _convListOpen = !_convListOpen;
+        if (_convListOpen) _showConvList(); else _showChatView();
+    }
+
+    function _showConvList() {
+        _convListOpen = true;
+        document.getElementById('conv-list-panel').classList.add('open');
+        const btn = document.getElementById('conv-list-btn');
+        btn.style.opacity = '1'; btn.style.color = '#58a6ff';
+        _renderConvList();
+    }
+
+    function _showChatView() {
+        _convListOpen = false;
+        document.getElementById('conv-list-panel').classList.remove('open');
+        const btn = document.getElementById('conv-list-btn');
+        btn.style.opacity = '0.5'; btn.style.color = '';
+    }
+
+    function _renderConvList() {
+        const scroll = document.getElementById('conv-list-scroll');
+        const sorted = [..._conversations].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+        if (!sorted.length) { scroll.innerHTML = '<div class="conv-empty">No conversations yet.</div>'; return; }
+        const now = new Date();
+        const todayStr = now.toDateString();
+        const yesterdayStr = new Date(now - 86400000).toDateString();
+        let html = '', lastGroup = '';
+        for (const conv of sorted) {
+            const d = new Date(conv.updatedAt);
+            const ds = d.toDateString();
+            const group = ds === todayStr ? 'Today' : ds === yesterdayStr ? 'Yesterday' : d.toLocaleDateString();
+            if (group !== lastGroup) { html += `<div class="conv-group-label">${group}</div>`; lastGroup = group; }
+            const isActive = _activeConvId[conv.agentName] === conv.id && conv.agentName === currentChatAgent;
+            const agentLabel = getAgentDisplayName(conv.agentName).replace(' Agent','').replace(' Strategist','');
+            html += `<div class="conv-item${isActive ? ' active' : ''}" onclick="loadConversation('${conv.id}')">
+                <span class="conv-item-icon">📁</span>
+                <div class="conv-item-body">
+                    <div class="conv-item-title">${_escHtml(conv.title || 'New conversation')}</div>
+                    <div class="conv-item-meta"><span class="conv-item-agent">${agentLabel}</span><span class="conv-item-date">${d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span></div>
+                </div>
+                <button class="conv-item-del" onclick="event.stopPropagation();deleteConversation('${conv.id}')" title="Delete">✕</button>
+            </div>`;
+        }
+        scroll.innerHTML = html;
+    }
+
+    function _escHtml(s) {
+        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function loadConversation(convId) {
+        const conv = _conversations.find(c => c.id === convId);
+        if (!conv) return;
+        currentChatAgent = conv.agentName;
+        _activeConvId[conv.agentName] = convId;
+        _saveConversations();
+        _setAgentHeader(conv.agentName);
+        // Sync selector
+        const sel = document.getElementById('chat-agent-select');
+        if (sel) sel.value = conv.agentName;
+        document.getElementById('chat-agent-dot').className = 'chat-agent-dot ' + getAgentType(conv.agentName);
+        renderMessages(conv.agentName);
+        _showChatView();
+        document.getElementById('chat-input').focus();
+    }
+
+    function deleteConversation(convId) {
+        const conv = _conversations.find(c => c.id === convId);
+        _conversations = _conversations.filter(c => c.id !== convId);
+        if (conv && _activeConvId[conv.agentName] === convId) delete _activeConvId[conv.agentName];
+        _saveConversations();
+        _renderConvList();
+    }
+
+    function clearChatHistory() { newConversation(); }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('chat-messages').addEventListener('click', function() {
+            if (_convListOpen) _showChatView();
+        });
+        syncChatPanelPosition();
+        window.addEventListener('resize', syncChatPanelPosition);
+        refreshWatchlistCount();
+    });
+
+    // ── LLM Settings ───────────────────────────────────────────────
+    async function toggleLLMSettings() {
+        const panel = document.getElementById('llm-settings-panel');
+        if (panel.style.display === 'none') {
+            const resp = await fetch('/api/llm-config');
+            const cfg = await resp.json();
+            document.getElementById('llm-base-url').value = cfg.base_url || '';
+            document.getElementById('llm-model').value = cfg.model || '';
+            document.getElementById('llm-api-key').placeholder = cfg.api_key_masked || 'sk-...';
+            panel.style.display = 'block';
+        } else {
+            panel.style.display = 'none';
+        }
+    }
+
+    async function saveLLMSettings() {
+        const body = { base_url: document.getElementById('llm-base-url').value.trim(), model: document.getElementById('llm-model').value.trim() };
+        const key = document.getElementById('llm-api-key').value.trim();
+        if (key) body.api_key = key;
+        await fetch('/api/llm-config', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+        const msg = document.getElementById('llm-save-msg');
+        msg.textContent = 'Saved ✓'; msg.style.color = '#3fb950';
+        setTimeout(() => { msg.textContent = ''; document.getElementById('llm-settings-panel').style.display = 'none'; }, 1500);
+    }
+
+    function closeChat() {
+        _showChatView();
+        document.getElementById('agent-chat-panel').classList.remove('open');
+        document.body.classList.remove('chat-open');
+        const container = document.querySelector('.agents-container');
+        if (container) container.style.marginRight = '';
+    }
+
+    /* ── Chat panel resize ─────────────────────────────────────── */
+    (function initResize() {
+        const panel = document.getElementById('agent-chat-panel');
+        const handle = document.getElementById('chat-resize-handle');
+        if (!panel || !handle) return;
+        let startX, startW;
+        handle.addEventListener('mousedown', e => {
+            e.preventDefault(); startX = e.clientX; startW = panel.offsetWidth;
+            panel.classList.add('resizing'); document.body.classList.add('chat-resizing');
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+        function onMove(e) {
+            const newW = Math.min(Math.max(startW + (startX - e.clientX), 280), window.innerWidth * 0.8);
+            panel.style.width = newW + 'px';
+            const container = document.querySelector('.agents-container');
+            if (container) container.style.marginRight = newW + 'px';
+        }
+        function onUp() {
+            panel.classList.remove('resizing'); document.body.classList.remove('chat-resizing');
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+        }
+    })();
+
+    // ── Render ──────────────────────────────────────────────────────
+    function renderMessages(agentName) {
+        const msgContainer = document.getElementById('chat-messages');
+        const agentType = getAgentType(agentName);
+        const color = agentType === 'global' ? '#3fb950' : '#4a90d9';
+        const _msgs = chatHistories[agentName] || [];
+        msgContainer.innerHTML = _msgs.map(m => {
+            if (m.role === 'agent') {
+                return `<div class="chat-msg-row"><span class="chat-avatar" style="background:${color}"></span><div class="chat-msg agent md-content">${renderMarkdown(m.text)}</div></div>`;
+            } else {
+                return `<div class="chat-msg user">${escapeHtml(m.text)}</div>`;
+            }
+        }).join('');
+        msgContainer.scrollTop = msgContainer.scrollHeight;
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div'); div.textContent = text; return div.innerHTML;
+    }
+
+    function renderMarkdown(text) {
+        if (typeof marked !== 'undefined') {
+            marked.setOptions({ breaks: true, gfm: true });
+            return marked.parse(text);
+        }
+        return escapeHtml(text);
+    }
+
+    function showTyping() {
+        const msgContainer = document.getElementById('chat-messages');
+        const indicator = document.createElement('div');
+        indicator.className = 'chat-typing'; indicator.id = 'typing-indicator';
+        indicator.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
+        msgContainer.appendChild(indicator);
+        msgContainer.scrollTop = msgContainer.scrollHeight;
+    }
+
+    function hideTyping() {
+        const el = document.getElementById('typing-indicator');
+        if (el) el.remove();
+    }
+
+    async function sendMessage() {
+        const input = document.getElementById('chat-input');
+        const text = input.value.trim();
+        if (!text || !currentChatAgent) return;
+        input.value = '';
+        chatHistories[currentChatAgent].push({ role: 'user', text });
+        saveChatHistories();
+        renderMessages(currentChatAgent);
+        showTyping();
+
+        const analyzeMatch = text.match(/^analyze\s+([A-Za-z0-9.^]+)/i);
+        if (analyzeMatch) {
+            const ticker = analyzeMatch[1].toUpperCase();
+            try {
+                chatHistories[currentChatAgent].push({ role: 'agent', text: `Running TradingAgents deep analysis on ${ticker}...\n(This may take 30-60s.)` });
+                saveChatHistories(); renderMessages(currentChatAgent);
+                const resp = await fetch('/api/deep-analysis', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ ticker }) });
+                const data = await resp.json();
+                hideTyping();
+                chatHistories[currentChatAgent].push({ role: 'agent', text: data.analysis || 'Analysis failed.' });
+            } catch(e) { hideTyping(); chatHistories[currentChatAgent].push({ role: 'agent', text: 'Deep analysis failed.' }); }
+        } else {
+            try {
+                const history = (chatHistories[currentChatAgent] || []).slice(-10).map(m => ({ role: m.role, content: m.text }));
+                const resp = await fetch('/api/agent-chat', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ agent: currentChatAgent, message: text, history }) });
+                const data = await resp.json();
+                hideTyping();
+                chatHistories[currentChatAgent].push({ role: 'agent', text: data.response || 'No response.' });
+            } catch(e) { hideTyping(); chatHistories[currentChatAgent].push({ role: 'agent', text: 'Connection error.' }); }
+        }
+        saveChatHistories();
+        renderMessages(currentChatAgent);
+    }
+
+    function useSuggestion(text) {
+        document.getElementById('chat-input').value = text;
+        sendMessage();
+    }
+
+    function askAgentGlobal(question) {
+        openChat('global');
+        setTimeout(() => { document.getElementById('chat-input').value = question; sendMessage(); }, 200);
+    }
+
+    window.openAgentChat = function(agentName) { openChat(agentName); };
+
+    // ── Email config ────────────────────────────────────────────────
+    async function toggleEmailSettings() {
+        const panel = document.getElementById('email-settings-panel');
+        if (panel.style.display === 'none') {
+            panel.style.display = 'block';
+            try {
+                const r = await fetch('/api/email-config');
+                const cfg = await r.json();
+                document.getElementById('email-smtp-host').value     = cfg.smtp_host || 'smtp.gmail.com';
+                document.getElementById('email-smtp-port').value     = cfg.smtp_port || 587;
+                document.getElementById('email-smtp-user').value     = cfg.smtp_user || '';
+                document.getElementById('email-smtp-password').value = cfg.smtp_password || '';
+                document.getElementById('email-recipient').value     = cfg.recipient || '';
+                document.getElementById('email-enabled').checked     = !!cfg.enabled;
+            } catch(e) {}
+        } else { panel.style.display = 'none'; }
+    }
+
+    async function saveEmailConfig() {
+        const msg = document.getElementById('email-save-msg');
+        try {
+            const r = await fetch('/api/email-config', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ enabled: document.getElementById('email-enabled').checked, smtp_host: document.getElementById('email-smtp-host').value, smtp_port: parseInt(document.getElementById('email-smtp-port').value), smtp_user: document.getElementById('email-smtp-user').value, smtp_password: document.getElementById('email-smtp-password').value, recipient: document.getElementById('email-recipient').value }) });
+            const d = await r.json();
+            msg.textContent = d.ok ? '✓ Saved' : '✗ Failed'; msg.style.color = d.ok ? '#3fb950' : '#f85149';
+        } catch(e) { msg.textContent = '✗ Error'; msg.style.color = '#f85149'; }
+        setTimeout(() => { msg.textContent = ''; }, 3000);
+    }
+
+    async function testEmail() {
+        const msg = document.getElementById('email-save-msg');
+        msg.textContent = 'Sending...'; msg.style.color = '#8b949e';
+        try {
+            const r = await fetch('/api/notify-alert', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ ticker: 'TEST', market: 'US', price: 100, direction: 'above', alert_price: 100 }) });
+            const d = await r.json();
+            msg.textContent = d.ok ? '✓ Email sent!' : '✗ ' + (d.reason || 'Failed'); msg.style.color = d.ok ? '#3fb950' : '#f85149';
+        } catch(e) { msg.textContent = '✗ Error'; msg.style.color = '#f85149'; }
+        setTimeout(() => { msg.textContent = ''; }, 4000);
+    }
+
+    // ── Watchlist ───────────────────────────────────────────────────
+    let _wDirs = {};
+    let _wcDir = 'above';
+
+    async function openWatchModal() {
+        document.getElementById('watch-modal').classList.add('open');
+        await renderWatchModalBody();
+    }
+    function closeWatchModal() { document.getElementById('watch-modal').classList.remove('open'); }
+    document.getElementById('watch-modal').addEventListener('click', function(e) { if (e.target === this) closeWatchModal(); });
+
+    function _watchMarket() {
+        if (!currentChatAgent || currentChatAgent === 'global') return '';
+        return currentChatAgent.split('_')[0] || '';
+    }
+
+    async function renderWatchModalBody() {
+        const body = document.getElementById('watch-modal-body');
+        body.innerHTML = '<div style="color:#8b949e;font-size:12px;text-align:center;padding:20px;">Loading...</div>';
+        const market = _watchMarket();
+        let gainers = [], losers = [], watchlist = [];
+        try {
+            const url = market ? `/api/top-movers?market=${market}&n=5` : '/api/top-movers?n=5';
+            const [mvResp, wlResp] = await Promise.all([fetch(url), fetch('/api/watchlist')]);
+            const mv = await mvResp.json();
+            gainers = mv.gainers || []; losers = mv.losers || [];
+            watchlist = await wlResp.json();
+        } catch(e) { body.innerHTML = '<div style="color:#f85149;font-size:12px;padding:12px;">Failed to load data.</div>'; return; }
+
+        const addedKeys = new Set(watchlist.map(x => x.ticker + '_' + x.market));
+        function recRow(s) {
+            const ret = s.return_1d, retColor = ret >= 0 ? '#3fb950' : '#f85149';
+            const retStr = (ret >= 0 ? '+' : '') + ret.toFixed(2) + '%';
+            const defDir = ret >= 0 ? 'above' : 'below';
+            const defPrice = s.close ? (ret >= 0 ? (s.close * 1.02).toFixed(2) : (s.close * 0.98).toFixed(2)) : '';
+            const key = s.ticker + '_' + s.market;
+            _wDirs[key] = defDir;
+            const already = addedKeys.has(key);
+            const safeName = (s.name || '').replace(/'/g, "\\'");
+            return `<div class="wrec-row" id="wsr-${key}">
+                <div class="wrec-ticker">${s.ticker}<div style="color:#484f58;font-size:9px;font-weight:400;">${s.market}</div></div>
+                <div class="wrec-name">${s.name || ''}</div>
+                <div class="wrec-ret" style="color:${retColor};">${retStr}</div>
+                <div class="wrec-price">${s.close ? s.close : ''}</div>
+                <button class="wdir-btn ${defDir}" id="wdb-${key}" onclick="toggleWDir('${key}')">${defDir === 'above' ? '▲ above' : '▼ below'}</button>
+                <input class="walert-input" id="wpi-${key}" type="number" placeholder="price" value="${defPrice}" step="0.01" />
+                <button class="wadd-btn" id="wadd-${key}" ${already ? 'disabled' : ''}
+                    onclick="wAdd('${s.ticker}','${safeName}','${s.market}','${s.close||0}','${key}')">${already ? '✓' : '+'}</button>
+            </div>`;
+        }
+        const markets = [...new Set([...gainers, ...losers].map(s => s.market))];
+        const marketLabel = markets.length === 1 ? markets[0] : (market || 'All');
+        const mktOptions = ['CN','US','HK','JP','IN','UK','DE','FR','KR','TW','AU','BR','SA'].map(m => `<option value="${m}"${m === (market||'US') ? ' selected' : ''}>${m}</option>`).join('');
+        body.innerHTML = `
+        <div class="wm-section">📈 Top Gainers — ${marketLabel}</div>
+        ${gainers.length ? gainers.map(recRow).join('') : '<div style="color:#8b949e;font-size:11px;padding:8px 16px;">No data</div>'}
+        <div class="wm-section">📉 Top Losers — ${marketLabel}</div>
+        ${losers.length ? losers.map(recRow).join('') : '<div style="color:#8b949e;font-size:11px;padding:8px 16px;">No data</div>'}
+        <div class="wm-section">➕ Custom</div>
+        <div class="wcustom-row">
+            <input id="wc-ticker" placeholder="Ticker" style="width:70px;" />
+            <select id="wc-market" style="width:68px;">${mktOptions}</select>
+            <button class="wdir-btn above" id="wc-dir" onclick="toggleWCustomDir()" style="min-width:58px;">▲ above</button>
+            <input id="wc-price" type="number" placeholder="price" class="walert-input" style="width:80px;" />
+            <button class="wadd-btn" onclick="wAddCustom()">Add</button>
+        </div>
+        <div class="wm-section">👁 My Watches</div>
+        <div id="wlist-items">${_renderWlItems(watchlist)}</div>
+        <div style="color:#8b949e;font-size:10px;padding:8px 16px;">Prices checked every 30s while page is open.</div>`;
+    }
+
+    function _renderWlItems(watchlist) {
+        if (!watchlist.length) return '<div style="color:#8b949e;font-size:11px;padding:10px 16px;">Nothing added yet.</div>';
+        return watchlist.map(item => {
+            const dirColor = item.direction === 'above' ? '#3fb950' : '#f85149';
+            const dirStr = item.direction === 'above' ? '▲ ≥' : '▼ ≤';
+            return `<div class="wlist-item" id="wli-${item.id}">
+                <span class="wlist-ticker">${item.ticker}</span>
+                <span style="color:#484f58;font-size:10px;">${item.market}</span>
+                <span class="wlist-cond">${item.name ? item.name + ' — ' : ''}<span style="color:${dirColor};">${dirStr} ${item.alert_price}</span></span>
+                <span style="color:${item.triggered ? '#d29922' : '#3fb950'};font-size:10px;">${item.triggered ? '🔔' : '●'}</span>
+                <button class="wlist-del" onclick="wRemove(${item.id})">Remove</button>
+            </div>`;
+        }).join('');
+    }
+
+    function toggleWCustomDir() {
+        _wcDir = _wcDir === 'above' ? 'below' : 'above';
+        const btn = document.getElementById('wc-dir');
+        btn.className = 'wdir-btn ' + _wcDir;
+        btn.textContent = _wcDir === 'above' ? '▲ above' : '▼ below';
+    }
+    function toggleWDir(key) {
+        const next = (_wDirs[key] || 'above') === 'above' ? 'below' : 'above';
+        _wDirs[key] = next;
+        const btn = document.getElementById('wdb-' + key);
+        btn.className = 'wdir-btn ' + next;
+        btn.textContent = next === 'above' ? '▲ above' : '▼ below';
+    }
+    async function wAdd(ticker, name, market, refPrice, key) {
+        const priceEl = document.getElementById('wpi-' + key);
+        const alertPrice = parseFloat(priceEl.value);
+        if (!alertPrice || isNaN(alertPrice)) { priceEl.style.borderColor = '#f85149'; setTimeout(() => priceEl.style.borderColor = '#30363d', 1500); return; }
+        await _postWatch({ ticker, name, market, alert_price: alertPrice, direction: _wDirs[key] || 'above', ref_price: parseFloat(refPrice) || 0 });
+        const btn = document.getElementById('wadd-' + key);
+        if (btn) { btn.textContent = '✓'; btn.disabled = true; }
+        await _refreshWListSection();
+    }
+    async function wAddCustom() {
+        const tickerEl = document.getElementById('wc-ticker'), priceEl = document.getElementById('wc-price');
+        const ticker = tickerEl.value.trim().toUpperCase(), market = document.getElementById('wc-market').value;
+        const alertPrice = parseFloat(priceEl.value);
+        if (!ticker) { tickerEl.style.borderColor = '#f85149'; setTimeout(() => tickerEl.style.borderColor = '#30363d', 1500); return; }
+        if (!alertPrice || isNaN(alertPrice)) { priceEl.style.borderColor = '#f85149'; setTimeout(() => priceEl.style.borderColor = '#30363d', 1500); return; }
+        await _postWatch({ ticker, name: '', market, alert_price: alertPrice, direction: _wcDir, ref_price: 0 });
+        tickerEl.value = ''; priceEl.value = '';
+        await _refreshWListSection();
+    }
+    async function _postWatch(data) {
+        try {
+            await fetch('/api/watchlist', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+            showWatchToast(`✓ Watching ${data.ticker} — alert when ${data.direction} ${data.alert_price}`, false);
+            refreshWatchlistCount();
+        } catch(e) { showWatchToast('Failed to add', true); }
+    }
+    async function wRemove(id) {
+        try { await fetch(`/api/watchlist/${id}`, { method: 'DELETE' }); await _refreshWListSection(); refreshWatchlistCount(); }
+        catch(e) { showWatchToast('Failed to remove', true); }
+    }
+    async function _refreshWListSection() {
+        try {
+            const resp = await fetch('/api/watchlist');
+            const items = await resp.json();
+            refreshWatchlistCount(items);
+            const container = document.getElementById('wlist-items');
+            if (container) container.innerHTML = _renderWlItems(items);
+        } catch(e) {}
+    }
+    async function refreshWatchlistCount(items) {
+        try {
+            if (!items) { const r = await fetch('/api/watchlist'); items = await r.json(); }
+            const cnt = items.filter(x => !x.triggered).length;
+            const badge = document.getElementById('wl-count');
+            if (badge) { if (cnt > 0) { badge.textContent = cnt; badge.style.display = 'inline'; } else { badge.style.display = 'none'; } }
+        } catch(e) {}
+    }
+    function showWatchToast(msg, isError) {
+        const container = document.getElementById('watch-toast-container');
+        const toast = document.createElement('div');
+        toast.className = 'watch-toast' + (isError ? ' triggered' : '');
+        toast.textContent = msg;
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 5000);
+    }
+    async function checkWatchlistPrices() {
+        let items;
+        try { const r = await fetch('/api/watchlist'); items = await r.json(); } catch(e) { return; }
+        const active = items.filter(x => !x.triggered);
+        if (!active.length) return;
+        let prices;
+        try {
+            const r = await fetch('/api/check-prices', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ tickers: active.map(x => ({ ticker: x.ticker, market: x.market })) }) });
+            prices = (await r.json()).prices || {};
+        } catch(e) { return; }
+        for (const item of active) {
+            const price = prices[item.ticker];
+            if (price == null) continue;
+            const hit = item.direction === 'above' ? price >= item.alert_price : price <= item.alert_price;
+            if (hit) {
+                const msg = `🔔 ${item.ticker} (${item.market}) = ${price} — ${item.direction === 'above' ? '≥' : '≤'}${item.alert_price}`;
+                showWatchToast(msg, true);
+                if (Notification && Notification.permission === 'granted') new Notification('Price Alert', { body: msg });
+                fetch('/api/notify-alert', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ ticker: item.ticker, market: item.market, price, direction: item.direction, alert_price: item.alert_price }) }).catch(() => {});
+                await fetch(`/api/watchlist/${item.id}`, { method: 'DELETE' });
+                refreshWatchlistCount();
+            }
+        }
+    }
+
+    if (Notification && Notification.permission === 'default') Notification.requestPermission();
+    setInterval(checkWatchlistPrices, 30000);
+</script>
+</body>
+</html>

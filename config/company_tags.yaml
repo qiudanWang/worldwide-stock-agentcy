@@ -1,0 +1,702 @@
+# ── CN companies ────────────────────────────────────────────────────────
+科大讯飞:
+  ticker: "002230"
+  market: CN
+  sub_sector: [AI_application]
+  customer_type: [enterprise, government]
+  revenue_model: [software_license, service]
+
+寒武纪:
+  ticker: "688256"
+  market: CN
+  sub_sector: [AI_infrastructure, semiconductor_design]
+  customer_type: [enterprise, government]
+  revenue_model: [hardware]
+
+浪潮信息:
+  ticker: "000977"
+  market: CN
+  sub_sector: [HPC_server, AI_infrastructure]
+  customer_type: [enterprise, government]
+  revenue_model: [hardware]
+
+中科曙光:
+  ticker: "603019"
+  market: CN
+  sub_sector: [HPC_server, AI_infrastructure]
+  customer_type: [enterprise, government]
+  revenue_model: [hardware]
+
+华大九天:
+  ticker: "301269"
+  market: CN
+  sub_sector: [EDA]
+  customer_type: [enterprise]
+  revenue_model: [software_license]
+
+深信服:
+  ticker: "300454"
+  market: CN
+  sub_sector: [cybersecurity, cloud_platform]
+  customer_type: [enterprise, government]
+  revenue_model: [software_license, hardware]
+
+奇安信:
+  ticker: "688561"
+  market: CN
+  sub_sector: [cybersecurity]
+  customer_type: [enterprise, government]
+  revenue_model: [software_license, service]
+
+用友网络:
+  ticker: "600588"
+  market: CN
+  sub_sector: [enterprise_software]
+  customer_type: [enterprise]
+  revenue_model: [SaaS, software_license]
+
+恒生电子:
+  ticker: "600570"
+  market: CN
+  sub_sector: [fintech_infrastructure]
+  customer_type: [enterprise]
+  revenue_model: [software_license, SaaS]
+
+金山办公:
+  ticker: "688111"
+  market: CN
+  sub_sector: [office_software]
+  customer_type: [enterprise, consumer]
+  revenue_model: [SaaS, software_license]
+
+中芯国际:
+  ticker: "688981"
+  market: CN
+  sub_sector: [semiconductor_manufacturing, foundry]
+  customer_type: [enterprise]
+  revenue_model: [service]
+
+韦尔股份:
+  ticker: "603501"
+  market: CN
+  sub_sector: [semiconductor_design]
+  customer_type: [enterprise]
+  revenue_model: [hardware]
+
+中兴通讯:
+  ticker: "000063"
+  market: CN
+  sub_sector: [networking, telecom_equipment]
+  customer_type: [enterprise, government]
+  revenue_model: [hardware, service]
+
+紫光股份:
+  ticker: "000938"
+  market: CN
+  sub_sector: [networking, cloud_platform]
+  customer_type: [enterprise, government]
+  revenue_model: [hardware, service]
+
+海光信息:
+  ticker: "688041"
+  market: CN
+  sub_sector: [semiconductor_design, AI_infrastructure]
+  customer_type: [enterprise, government]
+  revenue_model: [hardware]
+
+# ── US companies ────────────────────────────────────────────────────────
+NVDA:
+  ticker: NVDA
+  market: US
+  sub_sector: [AI_infrastructure, semiconductor_design]
+  customer_type: [enterprise, developer]
+  revenue_model: [hardware]
+
+AMD:
+  ticker: AMD
+  market: US
+  sub_sector: [semiconductor_design, AI_infrastructure]
+  customer_type: [enterprise, consumer]
+  revenue_model: [hardware]
+
+AVGO:
+  ticker: AVGO
+  market: US
+  sub_sector: [semiconductor_design, networking]
+  customer_type: [enterprise]
+  revenue_model: [hardware]
+
+MSFT:
+  ticker: MSFT
+  market: US
+  sub_sector: [cloud_platform, enterprise_software, AI_application, office_software]
+  customer_type: [enterprise, consumer, developer]
+  revenue_model: [SaaS, software_license]
+
+GOOGL:
+  ticker: GOOGL
+  market: US
+  sub_sector: [AI_application, cloud_platform, search_engine]
+  customer_type: [enterprise, consumer, developer]
+  revenue_model: [advertising, SaaS]
+
+META:
+  ticker: META
+  market: US
+  sub_sector: [AI_application, AI_infrastructure, social_media]
+  customer_type: [consumer, enterprise]
+  revenue_model: [advertising]
+
+PLTR:
+  ticker: PLTR
+  market: US
+  sub_sector: [AI_application]
+  customer_type: [enterprise, government]
+  revenue_model: [SaaS, service]
+
+ORCL:
+  ticker: ORCL
+  market: US
+  sub_sector: [enterprise_software, cloud_platform]
+  customer_type: [enterprise]
+  revenue_model: [SaaS, software_license]
+
+CRM:
+  ticker: CRM
+  market: US
+  sub_sector: [enterprise_software]
+  customer_type: [enterprise]
+  revenue_model: [SaaS]
+
+NOW:
+  ticker: NOW
+  market: US
+  sub_sector: [enterprise_software]
+  customer_type: [enterprise]
+  revenue_model: [SaaS]
+
+PANW:
+  ticker: PANW
+  market: US
+  sub_sector: [cybersecurity]
+  customer_type: [enterprise]
+  revenue_model: [SaaS, software_license]
+
+CRWD:
+  ticker: CRWD
+  market: US
+  sub_sector: [cybersecurity]
+  customer_type: [enterprise]
+  revenue_model: [SaaS]
+
+SMCI:
+  ticker: SMCI
+  market: US
+  sub_sector: [HPC_server, AI_infrastructure]
+  customer_type: [enterprise]
+  revenue_model: [hardware]
+
+DELL:
+  ticker: DELL
+  market: US
+  sub_sector: [HPC_server]
+  customer_type: [enterprise, consumer]
+  revenue_model: [hardware, service]
+
+SNPS:
+  ticker: SNPS
+  market: US
+  sub_sector: [EDA]
+  customer_type: [enterprise]
+  revenue_model: [software_license]
+
+CDNS:
+  ticker: CDNS
+  market: US
+  sub_sector: [EDA]
+  customer_type: [enterprise]
+  revenue_model: [software_license]
+
+TSM:
+  ticker: TSM
+  market: US
+  sub_sector: [semiconductor_manufacturing, foundry]
+  customer_type: [enterprise]
+  revenue_model: [service]
+
+INTC:
+  ticker: INTC
+  market: US
+  sub_sector: [semiconductor_design, semiconductor_manufacturing]
+  customer_type: [enterprise, consumer]
+  revenue_model: [hardware]
+
+CSCO:
+  ticker: CSCO
+  market: US
+  sub_sector: [networking]
+  customer_type: [enterprise, government]
+  revenue_model: [hardware, SaaS]
+
+ANET:
+  ticker: ANET
+  market: US
+  sub_sector: [networking]
+  customer_type: [enterprise]
+  revenue_model: [hardware]
+
+ADBE:
+  ticker: ADBE
+  market: US
+  sub_sector: [office_software]
+  customer_type: [enterprise, consumer]
+  revenue_model: [SaaS]
+
+COIN:
+  ticker: COIN
+  market: US
+  sub_sector: [fintech_infrastructure]
+  customer_type: [consumer, enterprise]
+  revenue_model: [platform_fee]
+
+FTNT:
+  ticker: FTNT
+  market: US
+  sub_sector: [cybersecurity]
+  customer_type: [enterprise]
+  revenue_model: [hardware, SaaS]
+
+QCOM:
+  ticker: QCOM
+  market: US
+  sub_sector: [semiconductor_design]
+  customer_type: [enterprise]
+  revenue_model: [hardware, licensing]
+
+ARM:
+  ticker: ARM
+  market: US
+  sub_sector: [semiconductor_design, IP_licensing]
+  customer_type: [enterprise]
+  revenue_model: [licensing]
+
+SNOW:
+  ticker: SNOW
+  market: US
+  sub_sector: [cloud_platform]
+  customer_type: [enterprise]
+  revenue_model: [SaaS]
+
+NET:
+  ticker: NET
+  market: US
+  sub_sector: [cloud_platform, cybersecurity]
+  customer_type: [enterprise, developer]
+  revenue_model: [SaaS]
+
+AMZN:
+  ticker: AMZN
+  market: US
+  sub_sector: [cloud_platform, e_commerce]
+  customer_type: [enterprise, consumer]
+  revenue_model: [SaaS, commission, platform_fee]
+
+GFS:
+  ticker: GFS
+  market: US
+  sub_sector: [semiconductor_manufacturing, foundry]
+  customer_type: [enterprise]
+  revenue_model: [service]
+
+# ── HK companies ────────────────────────────────────────────────────────
+Tencent:
+  ticker: "0700"
+  market: HK
+  sub_sector: [social_media, gaming, AI_application, cloud_platform]
+  customer_type: [consumer, enterprise]
+  revenue_model: [advertising, subscription, platform_fee]
+
+Alibaba:
+  ticker: "9988"
+  market: HK
+  sub_sector: [e_commerce, cloud_platform, AI_application]
+  customer_type: [consumer, enterprise, SMB]
+  revenue_model: [commission, SaaS, advertising]
+
+Meituan:
+  ticker: "3690"
+  market: HK
+  sub_sector: [food_delivery, e_commerce, ride_hailing]
+  customer_type: [consumer, SMB]
+  revenue_model: [commission, advertising]
+
+Xiaomi:
+  ticker: "1810"
+  market: HK
+  sub_sector: [consumer_electronics, AI_application]
+  customer_type: [consumer]
+  revenue_model: [hardware, advertising, subscription]
+
+JD:
+  ticker: "9618"
+  market: HK
+  sub_sector: [e_commerce, cloud_platform]
+  customer_type: [consumer, enterprise]
+  revenue_model: [commission, service]
+
+Baidu:
+  ticker: "9888"
+  market: HK
+  sub_sector: [search_engine, AI_application, AI_infrastructure, autonomous_driving]
+  customer_type: [consumer, enterprise, developer]
+  revenue_model: [advertising, SaaS]
+
+NetEase:
+  ticker: "9999"
+  market: HK
+  sub_sector: [gaming, content_platform]
+  customer_type: [consumer]
+  revenue_model: [subscription, platform_fee]
+
+Kuaishou:
+  ticker: "1024"
+  market: HK
+  sub_sector: [social_media, content_platform]
+  customer_type: [consumer]
+  revenue_model: [advertising, commission]
+
+Bilibili:
+  ticker: "9626"
+  market: HK
+  sub_sector: [content_platform, gaming, social_media]
+  customer_type: [consumer]
+  revenue_model: [advertising, subscription, platform_fee]
+
+SMIC_HK:
+  ticker: "0981"
+  market: HK
+  sub_sector: [semiconductor_manufacturing, foundry]
+  customer_type: [enterprise]
+  revenue_model: [service]
+
+Lenovo:
+  ticker: "0992"
+  market: HK
+  sub_sector: [HPC_server, consumer_electronics]
+  customer_type: [enterprise, consumer]
+  revenue_model: [hardware, service]
+
+BYD_HK:
+  ticker: "1211"
+  market: HK
+  sub_sector: [EV_technology, battery_technology, consumer_electronics]
+  customer_type: [consumer]
+  revenue_model: [hardware]
+
+Sunny_Optical:
+  ticker: "2382"
+  market: HK
+  sub_sector: [optical_components, consumer_electronics]
+  customer_type: [enterprise]
+  revenue_model: [hardware]
+
+# ── JP companies ────────────────────────────────────────────────────────
+Sony:
+  ticker: "6758"
+  market: JP
+  sub_sector: [consumer_electronics, gaming, content_platform]
+  customer_type: [consumer, enterprise]
+  revenue_model: [hardware, subscription, platform_fee]
+
+Tokyo_Electron:
+  ticker: "8035"
+  market: JP
+  sub_sector: [semiconductor_manufacturing]
+  customer_type: [enterprise]
+  revenue_model: [hardware]
+
+Keyence:
+  ticker: "6861"
+  market: JP
+  sub_sector: [industrial_automation, optical_components]
+  customer_type: [enterprise]
+  revenue_model: [hardware]
+
+SoftBank:
+  ticker: "9984"
+  market: JP
+  sub_sector: [AI_infrastructure, telecom_equipment]
+  customer_type: [enterprise, consumer]
+  revenue_model: [service, platform_fee]
+
+Nintendo:
+  ticker: "7974"
+  market: JP
+  sub_sector: [gaming, consumer_electronics]
+  customer_type: [consumer]
+  revenue_model: [hardware, subscription, platform_fee]
+
+Advantest:
+  ticker: "6857"
+  market: JP
+  sub_sector: [semiconductor_manufacturing]
+  customer_type: [enterprise]
+  revenue_model: [hardware]
+
+Murata:
+  ticker: "6981"
+  market: JP
+  sub_sector: [passive_components, consumer_electronics]
+  customer_type: [enterprise]
+  revenue_model: [hardware]
+
+Renesas:
+  ticker: "6723"
+  market: JP
+  sub_sector: [semiconductor_design]
+  customer_type: [enterprise]
+  revenue_model: [hardware]
+
+Fujitsu:
+  ticker: "6702"
+  market: JP
+  sub_sector: [IT_services, enterprise_software, AI_application]
+  customer_type: [enterprise, government]
+  revenue_model: [service, SaaS, hardware]
+
+NEC:
+  ticker: "6701"
+  market: JP
+  sub_sector: [IT_services, telecom_equipment, AI_application]
+  customer_type: [enterprise, government]
+  revenue_model: [service, hardware]
+
+Fanuc:
+  ticker: "6954"
+  market: JP
+  sub_sector: [industrial_automation, robotics]
+  customer_type: [enterprise]
+  revenue_model: [hardware, service]
+
+# ── KR companies ────────────────────────────────────────────────────────
+Samsung:
+  ticker: "005930"
+  market: KR
+  sub_sector: [memory_chips, semiconductor_manufacturing, foundry, consumer_electronics]
+  customer_type: [enterprise, consumer]
+  revenue_model: [hardware]
+
+SK_Hynix:
+  ticker: "000660"
+  market: KR
+  sub_sector: [memory_chips, AI_infrastructure]
+  customer_type: [enterprise]
+  revenue_model: [hardware]
+
+NAVER:
+  ticker: "035420"
+  market: KR
+  sub_sector: [search_engine, e_commerce, AI_application, content_platform]
+  customer_type: [consumer, enterprise, SMB]
+  revenue_model: [advertising, commission, SaaS]
+
+Kakao:
+  ticker: "035720"
+  market: KR
+  sub_sector: [social_media, e_commerce, content_platform]
+  customer_type: [consumer, SMB]
+  revenue_model: [advertising, commission, platform_fee]
+
+Samsung_SDI:
+  ticker: "006400"
+  market: KR
+  sub_sector: [battery_technology, EV_technology]
+  customer_type: [enterprise]
+  revenue_model: [hardware]
+
+LG_Energy:
+  ticker: "373220"
+  market: KR
+  sub_sector: [battery_technology, EV_technology]
+  customer_type: [enterprise]
+  revenue_model: [hardware]
+
+Samsung_SDS:
+  ticker: "018260"
+  market: KR
+  sub_sector: [IT_services, cloud_platform, enterprise_software]
+  customer_type: [enterprise]
+  revenue_model: [service, SaaS]
+
+Krafton:
+  ticker: "259960"
+  market: KR
+  sub_sector: [gaming]
+  customer_type: [consumer]
+  revenue_model: [platform_fee, subscription]
+
+NCSoft:
+  ticker: "036570"
+  market: KR
+  sub_sector: [gaming]
+  customer_type: [consumer]
+  revenue_model: [subscription, platform_fee]
+
+# ── TW companies ────────────────────────────────────────────────────────
+TSMC:
+  ticker: "2330"
+  market: TW
+  sub_sector: [semiconductor_manufacturing, foundry]
+  customer_type: [enterprise]
+  revenue_model: [service]
+
+MediaTek:
+  ticker: "2454"
+  market: TW
+  sub_sector: [semiconductor_design]
+  customer_type: [enterprise]
+  revenue_model: [hardware]
+
+Hon_Hai:
+  ticker: "2317"
+  market: TW
+  sub_sector: [consumer_electronics, HPC_server]
+  customer_type: [enterprise]
+  revenue_model: [hardware, service]
+
+ASE:
+  ticker: "3711"
+  market: TW
+  sub_sector: [OSAT, semiconductor_manufacturing]
+  customer_type: [enterprise]
+  revenue_model: [service]
+
+UMC:
+  ticker: "2303"
+  market: TW
+  sub_sector: [semiconductor_manufacturing, foundry]
+  customer_type: [enterprise]
+  revenue_model: [service]
+
+Delta_Electronics:
+  ticker: "2308"
+  market: TW
+  sub_sector: [passive_components, EV_technology, industrial_automation]
+  customer_type: [enterprise]
+  revenue_model: [hardware]
+
+Novatek:
+  ticker: "3034"
+  market: TW
+  sub_sector: [semiconductor_design, display_technology]
+  customer_type: [enterprise]
+  revenue_model: [hardware]
+
+Realtek:
+  ticker: "2379"
+  market: TW
+  sub_sector: [semiconductor_design, networking]
+  customer_type: [enterprise]
+  revenue_model: [hardware]
+
+# ── IN companies ────────────────────────────────────────────────────────
+Infosys:
+  ticker: INFY
+  market: IN
+  sub_sector: [IT_services, enterprise_software, AI_application]
+  customer_type: [enterprise]
+  revenue_model: [service, SaaS]
+
+TCS:
+  ticker: TCS
+  market: IN
+  sub_sector: [IT_services, enterprise_software]
+  customer_type: [enterprise]
+  revenue_model: [service, SaaS]
+
+Wipro:
+  ticker: WIPRO
+  market: IN
+  sub_sector: [IT_services, cloud_platform]
+  customer_type: [enterprise]
+  revenue_model: [service, SaaS]
+
+HCL_Tech:
+  ticker: HCLTECH
+  market: IN
+  sub_sector: [IT_services, enterprise_software]
+  customer_type: [enterprise]
+  revenue_model: [service, SaaS]
+
+Tech_Mahindra:
+  ticker: TECHM
+  market: IN
+  sub_sector: [IT_services, telecom_equipment, AI_application]
+  customer_type: [enterprise]
+  revenue_model: [service]
+
+# ── UK companies ────────────────────────────────────────────────────────
+ARM_UK:
+  ticker: ARM
+  market: UK
+  sub_sector: [semiconductor_design, IP_licensing]
+  customer_type: [enterprise]
+  revenue_model: [licensing]
+
+Darktrace:
+  ticker: DARK
+  market: UK
+  sub_sector: [cybersecurity, AI_application]
+  customer_type: [enterprise]
+  revenue_model: [SaaS, subscription]
+
+Sage:
+  ticker: SAGE
+  market: UK
+  sub_sector: [enterprise_software, office_software]
+  customer_type: [enterprise, SMB]
+  revenue_model: [SaaS, software_license]
+
+# ── DE companies ────────────────────────────────────────────────────────
+SAP:
+  ticker: SAP
+  market: DE
+  sub_sector: [enterprise_software, cloud_platform, AI_application]
+  customer_type: [enterprise]
+  revenue_model: [SaaS, software_license]
+
+Infineon:
+  ticker: IFX
+  market: DE
+  sub_sector: [semiconductor_design, EV_technology]
+  customer_type: [enterprise]
+  revenue_model: [hardware]
+
+Aixtron:
+  ticker: AIXA
+  market: DE
+  sub_sector: [semiconductor_manufacturing]
+  customer_type: [enterprise]
+  revenue_model: [hardware]
+
+# ── FR companies ────────────────────────────────────────────────────────
+Dassault_Systemes:
+  ticker: DSY
+  market: FR
+  sub_sector: [enterprise_software, EDA]
+  customer_type: [enterprise]
+  revenue_model: [SaaS, software_license]
+
+Capgemini:
+  ticker: CAP
+  market: FR
+  sub_sector: [IT_services, AI_application]
+  customer_type: [enterprise]
+  revenue_model: [service]
+
+STMicroelectronics:
+  ticker: STM
+  market: FR
+  sub_sector: [semiconductor_design, semiconductor_manufacturing]
+  customer_type: [enterprise]
+  revenue_model: [hardware]

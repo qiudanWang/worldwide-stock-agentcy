@@ -1,0 +1,30 @@
+# France stock watchlist — Tech stocks only
+# Euronext Paris tickers, no .PA suffix
+
+software_and_services:
+  - DSY       # Dassault Systemes
+  - CAP       # Capgemini
+  - ATO       # Atos
+  - SOP       # Sopra Steria
+  - ATE       # Alten (IT engineering/consulting)
+  - TEP       # Teleperformance (digital BPO)
+
+semiconductor:
+  - SOI       # Soitec
+
+cloud_and_telecom:
+  - OVH       # OVH Cloud
+  - ORA       # Orange SA (telecom)
+
+fintech:
+  - WLN       # Worldline
+
+ev_and_energy:
+  - FR        # Valeo SE (automotive tech)
+  - RNO       # Renault (EV)
+
+internet_and_media:
+  - VIV       # Vivendi (media)
+  - UBI       # Ubisoft (gaming/digital)
+  - TFI       # TF1 (broadcaster)
+  - MMB       # Lagardere (media)

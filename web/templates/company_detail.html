@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% block title %}{{ ticker }} — {{ t('nav.brand') }}{% endblock %}
+{% block content %}
+{% if not company %}
+<div class="card">
+    <div class="empty">{{ t('company.not_found') }}</div>
+</div>
+{% else %}
+<div class="header-row">
+    <h1>
+        {{ company.ticker }}
+        {% if company.cn_name %}{{ company.cn_name }}{% else %}{{ company.name }}{% endif %}
+    </h1>
+    <span class="meta">{{ company.board }}</span>
+</div>
+
+<!-- Company Profile -->
+{% if company_profile and company_profile.description %}
+<div class="card" style="margin-bottom: 16px;">
+    <h2>{{ t('company.profile') }}</h2>
+    <div style="max-height: 180px; overflow-y: auto; color: #c9d1d9; line-height: 1.6; margin-bottom: 12px; font-size: 14px; padding-right: 8px;">
+        {{ company_profile.description }}
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 16px 32px; border-top: 1px solid #30363d; padding-top: 12px;">
+        {% if company_profile.sector %}
+        <div class="stat-row" style="min-width: 180px;">
+            <span class="stat-label">{{ t('cols.sector') }}</span>
+            <span class="stat-value flat">{{ company_profile.sector }}</span>
+        </div>
+        {% endif %}
+        {% if company_profile.industry %}
+        <div class="stat-row" style="min-width: 180px;">
+            <span class="stat-label">{{ t('cols.industry') }}</span>
+            <span class="stat-value flat">{{ company_profile.industry }}</span>
+        </div>
+        {% endif %}
+        {% if company_profile.website %}
+        <div class="stat-row" style="min-width: 180px;">
+            <span class="stat-label">{{ t('cols.website') }}</span>
+            <span class="stat-value"><a href="{{ company_profile.website }}" target="_blank" style="color: #58a6ff; text-decoration: none;">{{ company_profile.website }}</a></span>
+        </div>
+        {% endif %}
+        {% if company_profile.employees %}
+        <div class="stat-row" style="min-width: 140px;">
+            <span class="stat-label">{{ t('cols.employees') }}</span>
+            <span class="stat-value flat">{{ company_profile.employees }}</span>
+        </div>
+        {% endif %}
+        {% if company_profile.country %}
+        <div class="stat-row" style="min-width: 140px;">
+            <span class="stat-label">{{ t('cols.hq') }}</span>
+            <span class="stat-value flat">{% if company_profile.city %}{{ company_profile.city }}, {% endif %}{{ company_profile.country }}</span>
+        </div>
+        {% endif %}
+        {% if company_profile.market_cap %}
+        <div class="stat-row" style="min-width: 140px;">
+            <span class="stat-label">{{ t('cols.mkt_cap') }}</span>
+            <span class="stat-value flat">{{ company_profile.market_cap }}</span>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% elif company_profile is defined and not company_profile.description %}
+{% endif %}
+
+<div class="grid-3" style="margin-bottom: 16px;">
+    <div class="card">
+        <div class="stat-row">
+            <span class="stat-label">{{ t('cols.price') }}</span>
+            <span class="stat-value">{% if company.close %}{{ "%.2f"|format(company.close) }}{% else %}-{% endif %}</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">{{ t('cols.mkt_cap') }}</span>
+            <span class="stat-value">{{ format_market_cap(company.market_cap, company.market) }}</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">{{ t('cols.vol_ratio') }}</span>
+            <span class="stat-value">
+                {% if company.volume_ratio and company.volume_ratio == company.volume_ratio %}
+                    {{ "%.1f"|format(company.volume_ratio) }}x
+                {% else %}-{% endif %}
+            </span>
+        </div>
+    </div>
+    <div class="card">
+        <div class="stat-row">
+            <span class="stat-label">{{ t('cols.return_1d') }}</span>
+            <span class="stat-value {{ 'up' if company.return_1d and company.return_1d > 0 else 'down' if company.return_1d and company.return_1d < 0 else 'flat' }}">
+                {% if company.return_1d is not none and company.return_1d == company.return_1d %}{{ "%.2f"|format(company.return_1d * 100) }}%{% else %}-{% endif %}
+            </span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">{{ t('cols.return_5d') }}</span>
+            <span class="stat-value {{ 'up' if company.return_5d and company.return_5d > 0 else 'down' if company.return_5d and company.return_5d < 0 else 'flat' }}">
+                {% if company.return_5d is not none and company.return_5d == company.return_5d %}{{ "%.2f"|format(company.return_5d * 100) }}%{% else %}-{% endif %}
+            </span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">{{ t('cols.return_20d') }}</span>
+            <span class="stat-value {{ 'up' if company.return_20d and company.return_20d > 0 else 'down' if company.return_20d and company.return_20d < 0 else 'flat' }}">
+                {% if company.return_20d is not none and company.return_20d == company.return_20d %}{{ "%.2f"|format(company.return_20d * 100) }}%{% else %}-{% endif %}
+            </span>
+        </div>
+    </div>
+    <div class="card">
+        <div class="stat-row">
+            <span class="stat-label">{{ t('cols.sector') }}</span>
+            <span class="stat-value">
+                {% if company.sub_sector %}
+                    {% for s in company.sub_sector %}
+                    <span class="tag" style="background: #0d1d30; color: #58a6ff; border: 1px solid #58a6ff;">{{ s }}</span>
+                    {% endfor %}
+                {% else %}
+                    {{ company.sector or '-' }}
+                {% endif %}
+            </span>
+        </div>
+        {% if company.customer_type %}
+        <div class="stat-row">
+            <span class="stat-label">{{ t('cols.customer') }}</span>
+            <span class="stat-value">{{ company.customer_type|join(', ') }}</span>
+        </div>
+        {% endif %}
+        {% if company.revenue_model %}
+        <div class="stat-row">
+            <span class="stat-label">{{ t('cols.revenue') }}</span>
+            <span class="stat-value">{{ company.revenue_model|join(', ') }}</span>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="grid">
+    <!-- Alerts -->
+    <div class="card">
+        <h2>{{ t('company.active_alerts') }}</h2>
+        {% if alerts %}
+        <div class="scroll-table">
+        <table>
+            <tr>
+                <th>{{ t('cols.type') }}</th>
+                <th>{{ t('cols.detail') }}</th>
+                <th>{{ t('cols.return_1d') }}</th>
+            </tr>
+            {% for a in alerts %}
+            <tr>
+                <td><span class="tag tag-{{ a.alert_type|replace('_spike','') }}">{{ a.alert_type }}</span></td>
+                <td>
+                    {% if a.alert_type == 'volume_spike' %}
+                        {{ a.volume_ratio }}x volume
+                    {% elif a.alert_type == 'news_spike' %}
+                        {{ a.news_count_keyword }} {{ t('common.keyword_hits') }}
+                    {% elif a.alert_type == 'peer_relative' %}
+                        {{ a.signal }}
+                    {% endif %}
+                </td>
+                <td class="{{ 'up' if a.get('return_1d') and a.return_1d > 0 else 'down' if a.get('return_1d') and a.return_1d < 0 else 'flat' }}">
+                    {% if a.get('return_1d') is not none %}{{ "%.2f"|format(a.return_1d * 100) }}%{% else %}-{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+        </div>
+        {% else %}
+            <div class="empty">{{ t('company.no_alerts') }}</div>
+        {% endif %}
+    </div>
+
+    <!-- Peers -->
+    <div class="card">
+        <h2>{{ t('company.peer_mapping') }}</h2>
+        {% if company.peers %}
+        <div class="scroll-table">
+        <table>
+            <tr>
+                {% if company.market == 'CN' %}
+                <th>{{ t('cols.us_peer') }}</th>
+                {% else %}
+                <th>{{ t('cols.cn_company') }}</th>
+                {% endif %}
+                <th>{{ t('cols.score') }}</th>
+            </tr>
+            {% for p in company.peers %}
+            <tr>
+                {% if company.market == 'CN' %}
+                <td><a href="/companies/{{ p.us_ticker }}" style="color: #58a6ff; text-decoration: none;"><strong>{{ p.us_ticker }}</strong></a></td>
+                {% else %}
+                <td><a href="/companies/{{ p.cn_ticker }}" style="color: #58a6ff; text-decoration: none;"><strong>{{ p.cn_name }}</strong> {{ p.cn_ticker }}</a></td>
+                {% endif %}
+                <td>
+                    <span class="score-bar" style="width: {{ (p.peer_score * 80)|int }}px"></span>
+                    {{ "%.2f"|format(p.peer_score) }}
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+        </div>
+        {% else %}
+            <div class="empty">{{ t('company.no_peers') }}</div>
+        {% endif %}
+    </div>
+
+    <!-- News -->
+    <div class="card full-width">
+        <h2>{{ t('news.company_news') }}</h2>
+        <div class="scroll-table" style="max-height: 500px;">
+        {% if news %}
+        <table>
+            <tr>
+                <th>{{ t('cols.title') }}</th>
+                <th>{{ t('cols.source') }}</th>
+                <th>{{ t('cols.hits') }}</th>
+            </tr>
+            {% for n in news %}
+            <tr>
+                <td>
+                    <a href="{{ n.get('link', '#') }}" target="_blank" style="color: #58a6ff; text-decoration: none;">
+                        {{ n.get('title', '')[:100] }}{% if n.get('title', '')|length > 100 %}...{% endif %}
+                    </a>
+                </td>
+                <td class="flat">{{ n.get('publisher', n.get('source', '')) }}</td>
+                <td>{{ n.get('hit_count', 0) }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% else %}
+            <div class="empty">{{ t('company.no_news') }}</div>
+        {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

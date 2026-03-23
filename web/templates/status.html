@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}{{ t('status.title') }} — {{ t('nav.brand') }}{% endblock %}
+{% block content %}
+
+{% if status and status.get('pipeline') %}
+<div class="card" style="margin-bottom: 16px;">
+    <h2>{{ t('status.pipeline') }}</h2>
+    <div class="stat-row">
+        <span class="stat-label">{{ t('status.state') }}</span>
+        <span class="stat-value">{{ status.pipeline.get('state', 'unknown') }}</span>
+    </div>
+    {% if status.pipeline.get('started') %}
+    <div class="stat-row">
+        <span class="stat-label">{{ t('status.started') }}</span>
+        <span class="stat-value">{{ status.pipeline.started }}</span>
+    </div>
+    {% endif %}
+    {% if status.pipeline.get('completed_agents') is not none %}
+    <div class="stat-row">
+        <span class="stat-label">{{ t('status.progress') }}</span>
+        <span class="stat-value">{{ status.pipeline.completed_agents }} / {{ status.pipeline.get('total_agents', '?') }}</span>
+    </div>
+    {% endif %}
+    {% if status.pipeline.get('duration_s') %}
+    <div class="stat-row">
+        <span class="stat-label">{{ t('status.duration') }}</span>
+        <span class="stat-value">{{ "%.1f"|format(status.pipeline.duration_s) }}{{ t('common.seconds') }}</span>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+{% if status and status.get('agents') %}
+<div class="card">
+    <h2>{{ t('status.agents') }}</h2>
+    <div class="scroll-table" style="max-height: 700px;">
+    <table>
+        <tr>
+            <th>{{ t('cols.agent') }}</th>
+            <th>{{ t('cols.state') }}</th>
+            <th>{{ t('cols.progress') }}</th>
+            <th>{{ t('cols.duration') }}</th>
+            <th>{{ t('cols.records') }}</th>
+            <th>{{ t('cols.last_run') }}</th>
+        </tr>
+        {% for name, agent in status.agents.items()|sort %}
+        <tr>
+            <td><strong>{{ name }}</strong></td>
+            <td>
+                {% if agent.state == 'completed' %}
+                <span style="color: #3fb950;">{{ agent.state }}</span>
+                {% elif agent.state == 'running' %}
+                <span style="color: #58a6ff;">{{ agent.state }}</span>
+                {% elif agent.state == 'failed' %}
+                <span style="color: #f85149;">{{ agent.state }}</span>
+                {% elif agent.state == 'waiting' %}
+                <span style="color: #d29922;">{{ agent.state }}</span>
+                {% else %}
+                <span class="flat">{{ agent.state }}</span>
+                {% endif %}
+            </td>
+            <td class="flat" style="font-size: 12px;">{{ agent.get('progress', '') }}</td>
+            <td>{{ "%.1f"|format(agent.get('duration_s', 0)) }}{{ t('common.seconds') }}</td>
+            <td>{{ agent.get('records', '-') }}</td>
+            <td class="flat" style="font-size: 11px;">{{ agent.get('last_run', '-') }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="empty">{{ t('status.no_data') }}</div>
+</div>
+{% endif %}
+{% endblock %}

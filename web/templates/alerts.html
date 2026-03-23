@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}{{ t('alerts.title') }} — {{ t('nav.brand') }}{% endblock %}
+{% block content %}
+
+<!-- Alert type labels and descriptions -->
+{% set _ALERT_LABEL = {
+    'gap_alert':               'Gap',
+    'price_alert':             'Price Move',
+    'volume_surge':            'Volume Surge',
+    'volume_spike':            'Volume Spike',
+    'news_spike':              'News Spike',
+    'macro_alert':             'Macro',
+    'sector_rotation':         'Sector Rotation',
+    'cross_market_divergence': 'Cross-Market',
+    'index_breakout':          'Index Breakout',
+    'peer_divergence':         'Peer Divergence',
+    'capital_flow':            'Capital Flow',
+} %}
+{% set _ALERT_DESC = {
+    'gap_alert':               'Open ≥3% vs prev close — stock gapped up/down at market open',
+    'price_alert':             'Intraday move ≥5% — significant single-day price swing',
+    'volume_surge':            'Volume ≥5× 20-day avg — extreme unusual trading activity',
+    'volume_spike':            'Volume ≥2× 20-day avg — notably higher than normal',
+    'news_spike':              'Unusual spike in keyword-matched company news articles',
+    'macro_alert':             'Macro indicator crossed threshold (VIX spike, rate move, FX swing…)',
+    'sector_rotation':         'Sector flipped ≥5 ranks between 5-day and 20-day performance',
+    'cross_market_divergence': 'Same sector diverges ≥3% across markets (e.g. US semis vs CN semis)',
+    'index_breakout':          'Market index broke its 20-day high or low',
+    'peer_divergence':         'Stock diverged significantly from its cross-market peer group',
+    'capital_flow':            'Northbound/southbound fund flows crossed threshold',
+} %}
+
+<!-- Filters -->
+<div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
+    <a href="/alerts" class="market-tab {{ 'active' if not active_market }}">{{ t('common.all') }}</a>
+    {% for am in alert_markets %}
+    <a href="/alerts?market={{ am }}"
+       class="market-tab {{ 'active' if active_market == am }}">{{ am }}</a>
+    {% endfor %}
+</div>
+
+<!-- Alert type legend -->
+<div class="card" style="margin-bottom: 16px;">
+    <h2>Alert Types</h2>
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 4px 24px;">
+    {% for atype, desc in _ALERT_DESC.items() %}
+        <div style="display: flex; align-items: baseline; gap: 8px; padding: 3px 0;">
+            <span style="color: #c9d1d9; font-size: 12px; flex-shrink:0; min-width: 160px;">{{ _ALERT_LABEL.get(atype, atype) }}</span>
+            <span style="color: #8b949e; font-size: 12px;">{{ desc }}</span>
+        </div>
+    {% endfor %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="scroll-table" style="max-height: 800px;">
+    {% if alerts %}
+    <table>
+        <tr>
+            <th>{{ t('cols.type') }}</th>
+            <th>{{ t('cols.market') }}</th>
+            <th>Subject</th>
+            <th>{{ t('cols.detail') }}</th>
+            <th>{{ t('cols.price') }}</th>
+            <th>{{ t('cols.mkt_cap') }}</th>
+        </tr>
+        {% for a in alerts %}
+        {% set is_stock = a.alert_type in ('gap_alert','price_alert','volume_surge','volume_spike','news_spike','capital_flow','peer_divergence') %}
+        {% set tag_class = 'tag-news' %}
+        {% if 'macro' in a.alert_type %}{% set tag_class = 'tag-macro' %}
+        {% elif 'sector' in a.alert_type %}{% set tag_class = 'tag-sector' %}
+        {% elif 'cross' in a.alert_type or 'index' in a.alert_type %}{% set tag_class = 'tag-cross' %}
+        {% elif 'capital' in a.alert_type %}{% set tag_class = 'tag-capital' %}
+        {% elif 'peer' in a.alert_type %}{% set tag_class = 'tag-peer' %}
+        {% elif 'volume' in a.alert_type %}{% set tag_class = 'tag-volume' %}
+        {% endif %}
+        <tr>
+            <td style="white-space:nowrap; font-size:12px; color:#8b949e;">{{ _ALERT_LABEL.get(a.alert_type, a.alert_type.replace('_',' ').title()) }}</td>
+            <td class="flat">{{ a.get('market', '') }}</td>
+            <td>
+                {% if is_stock and a.get('ticker') %}
+                    <a href="/companies/{{ a.ticker }}" style="color: #58a6ff; text-decoration: none;"><strong>{{ a.ticker }}</strong></a>
+                    {% if a.get('name') %}<span class="flat" style="margin-left:4px;">{{ a.name }}</span>{% endif %}
+                {% elif a.get('sector') %}
+                    <span style="color: #c9d1d9;">{{ a.sector }}</span>
+                {% elif a.get('name') %}
+                    <span style="color: #c9d1d9;">{{ a.name }}</span>
+                {% elif a.get('ticker') %}
+                    <span class="flat">{{ a.ticker }}</span>
+                {% endif %}
+            </td>
+            <td style="font-size: 12px; max-width: 420px; color: #c9d1d9;">
+                {% if a.alert_type == 'sector_rotation' %}
+                    {% if a.get('signal') %}
+                        {% set gaining = 'gaining' in a.signal %}
+                        <span style="color: {{ '#3fb950' if gaining else '#f85149' }}; font-weight:600;">{{ '▲' if gaining else '▼' }}</span>
+                        {{ a.signal }}
+                    {% endif %}
+                {% elif a.alert_type in ('volume_spike', 'volume_surge') %}
+                    {% if a.get('volume_ratio') %}
+                        <span style="color:#d29922; font-weight:600;">{{ "%.1f"|format(a.volume_ratio) }}x</span> volume
+                    {% endif %}
+                    {% if a.get('return_1d') is not none and a.return_1d == a.return_1d %}
+                        &nbsp;·&nbsp;<span class="{{ 'up' if a.return_1d > 0 else 'down' if a.return_1d < 0 else 'flat' }}">{{ "%+.2f"|format(a.return_1d * 100) }}%</span>
+                    {% endif %}
+                {% elif a.alert_type == 'news_spike' %}
+                    <span style="color:#d29922; font-weight:600;">{{ a.get('news_count_keyword', 0) }}</span> keyword-matched articles in 7d
+                {% elif a.alert_type == 'capital_flow' %}
+                    {% if a.get('net_flow') %}
+                        {% set flow = a.net_flow %}
+                        <span style="color: {{ '#3fb950' if flow > 0 else '#f85149' }}; font-weight:600;">{{ '▲ Inflow' if flow > 0 else '▼ Outflow' }}</span>
+                        &nbsp;{{ "{:+,.0f}".format(flow) }}M
+                    {% endif %}
+                {% elif a.alert_type == 'cross_market_divergence' %}
+                    {% if a.get('signal') %}
+                        <span style="color:#d29922;">{{ a.signal }}</span>
+                    {% endif %}
+                {% else %}
+                    {% if a.get('signal') %}{{ a.signal }}{% endif %}
+                {% endif %}
+            </td>
+            <td>{% if a.get('close') %}{{ "%.2f"|format(a.close) }}{% else %}-{% endif %}</td>
+            <td>{{ format_market_cap(a.get('market_cap'), a.get('market', 'US')) }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+        <div class="empty">{{ t('alerts.no_alerts') }}</div>
+    {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,102 @@
+# Japan stock watchlist — Tech stocks only
+# Tickers without ".T" suffix (added automatically)
+# ~90 tech stocks grouped by sub-sector
+
+semiconductor_equipment:
+  - "8035"    # Tokyo Electron
+  - "6857"    # Advantest
+  - "6920"    # Lasertec
+  - "6146"    # Disco Corporation
+  - "7735"    # Screen Holdings
+  - "6525"    # Kokusai Electric
+  - "6526"    # Socionext
+  - "3436"    # SUMCO
+  - "4063"    # Shin-Etsu Chemical
+  - "4186"    # Tokyo Ohka Kogyo
+  - "7741"    # HOYA Corporation
+
+electronic_components:
+  - "6981"    # Murata Manufacturing
+  - "6762"    # TDK Corporation
+  - "6971"    # Kyocera
+  - "6594"    # Nidec
+  - "6963"    # Rohm
+  - "4062"    # Ibiden
+  - "6723"    # Renesas Electronics
+  - "6976"    # Taiyo Yuden
+  - "6988"    # Nitto Denko
+  - "6807"    # Japan Aviation Electronics
+  - "6479"    # MinebeaMitsumi
+  - "5803"    # Fujikura
+  - "5802"    # Sumitomo Electric Industries
+
+software_it:
+  - "6701"    # NEC
+  - "6702"    # Fujitsu
+  - "9613"    # NTT Data Group
+  - "4684"    # Obic
+  - "4776"    # Cybozu
+  - "4704"    # Trend Micro
+  - "9719"    # SCSK
+  - "4475"    # Hennge
+  - "4307"    # Nomura Research Institute
+  - "2413"    # M3 Inc
+  - "6098"    # Recruit Holdings
+
+internet_platform:
+  - "9984"    # SoftBank Group
+  - "4689"    # Z Holdings (LY Corp)
+  - "4385"    # Mercari
+  - "4751"    # CyberAgent
+  - "9449"    # GMO Internet Group
+  - "4755"    # Rakuten Group
+  - "2432"    # DeNA
+
+hardware:
+  - "6758"    # Sony Group
+  - "6501"    # Hitachi
+  - "7751"    # Canon
+  - "7752"    # Ricoh
+  - "6448"    # Brother Industries
+  - "6861"    # Keyence
+  - "6645"    # Omron
+  - "6752"    # Panasonic Holdings
+  - "6753"    # Sharp
+  - "4902"    # Konica Minolta
+  - "6504"    # Fuji Electric
+  - "6503"    # Mitsubishi Electric
+
+gaming:
+  - "7974"    # Nintendo
+  - "9697"    # Capcom
+  - "7832"    # Bandai Namco Holdings
+  - "9684"    # Square Enix Holdings
+  - "3635"    # Koei Tecmo Holdings
+  - "3659"    # Nexon
+  - "9766"    # Konami Group
+
+telecom_equipment:
+  - "6754"    # Anritsu
+  - "6841"    # Yokogawa Electric
+
+robotics_automation:
+  - "6954"    # Fanuc
+  - "6273"    # SMC Corporation
+  - "6506"    # Yaskawa Electric
+  - "6324"    # Harmonic Drive Systems
+  - "6383"    # Daifuku
+
+ev_battery_lithography:
+  - "6674"    # GS Yuasa
+  - "7731"    # Nikon
+
+telecom_carriers:
+  - "9432"    # NTT (Nippon Telegraph & Telephone)
+  - "9433"    # KDDI
+  - "9434"    # SoftBank Corp
+
+medical_tech:
+  - "6869"    # Sysmex
+  - "4543"    # Terumo
+  - "7733"    # Olympus
+  - "4901"    # Fujifilm Holdings

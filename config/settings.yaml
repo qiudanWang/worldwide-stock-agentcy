@@ -1,0 +1,90 @@
+project_name: global-market-monitor
+
+# Email alert configuration (for price watchlist notifications)
+email:
+  enabled: false
+  smtp_host: smtp.gmail.com
+  smtp_port: 587
+  smtp_user: ""          # your Gmail address
+  smtp_password: ""      # Gmail App Password (not your login password)
+  recipient: ""          # where to send alerts (can be same as smtp_user)
+
+data_dir: data
+cache_dir: data/cache
+
+market_data:
+  history_days: 60
+  cn_history_days: 60
+  us_history_days: 60
+
+alerts:
+  volume_ratio_threshold: 3.0
+  news_spike_threshold: 5
+  northbound_flow_threshold: 100000000
+
+refresh:
+  universe: weekly
+  market_data: daily
+  financials: quarterly
+  peers: weekly
+  news: daily
+  capital_flow: daily
+  macro: daily
+
+# News tickers per market (key tickers for news fetching, not all stocks)
+news_tickers:
+  CN:
+    - "002230"
+    - "688256"
+    - "000977"
+    - "603019"
+    - "301269"
+    - "300454"
+    - "688561"
+    - "600588"
+    - "600570"
+    - "688111"
+    - "688981"
+    - "603501"
+    - "000063"
+    - "000938"
+    - "688041"
+  US:
+    - NVDA
+    - AMD
+    - MSFT
+    - GOOGL
+    - META
+    - PLTR
+    - ORCL
+    - PANW
+    - CRWD
+    - SMCI
+    - TSM
+    - AVGO
+  HK:
+    - "9988"
+    - "0700"
+    - "3690"
+    - "9618"
+    - "1810"
+    - "0981"
+  JP:
+    - "6857"
+    - "8035"
+    - "6758"
+    - "9984"
+    - "7203"
+  IN:
+    - INFY
+    - TCS
+    - RELIANCE
+    - HDFCBANK
+  KR:
+    - "005930"
+    - "000660"
+    - "035420"
+  TW:
+    - "2330"
+    - "2454"
+    - "2317"

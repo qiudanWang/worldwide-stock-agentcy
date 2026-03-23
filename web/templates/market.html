@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+{% block title %}Markets — Global Market Monitor{% endblock %}
+{% block content %}
+
+<!-- Market Tabs -->
+<div class="market-tabs" id="market-tabs">
+    {% for code in market_codes %}
+    <a href="/market/{{ code }}" class="market-tab {{ 'active' if active_market == code }}"
+       onclick="switchMarket('{{ code }}'); return false;">
+        {{ code }}
+        {% if markets_cfg[code] %}
+        <span class="flat" style="font-size: 10px;">{{ markets_cfg[code].name }}</span>
+        {% endif %}
+    </a>
+    {% endfor %}
+</div>
+
+<!-- ═══ Section 1: Market Overview ═══ -->
+{% for code in market_codes %}
+<div class="market-panel" data-market="{{ code }}" style="{{ '' if active_market == code else 'display:none;' }}">
+
+    <!-- Index Ribbon -->
+    {% if indices %}
+    <div class="index-ribbon" style="margin-bottom: 16px;">
+        {% for idx in indices %}
+        {% if idx.market == code %}
+        <div class="index-chip">
+            <div class="label">{{ idx.name }}</div>
+            <div class="value">{{ "%.2f"|format(idx.close) if idx.close else '-' }}</div>
+            <div class="change {{ 'up' if idx.change_pct and idx.change_pct > 0 else 'down' if idx.change_pct and idx.change_pct < 0 else 'flat' }}">
+                {% if idx.change_pct is not none %}{{ "%+.2f"|format(idx.change_pct) }}%{% else %}-{% endif %}
+            </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Market Stats -->
+    {% if market_stats.get(code) %}
+    <div class="grid-4" style="margin-bottom: 16px;">
+        <div class="card">
+            <div class="stat-row">
+                <span class="stat-label">{{ t('cols.total_stocks') }}</span>
+                <span class="stat-value">{{ market_stats[code].total_stocks }}</span>
+            </div>
+        </div>
+        <div class="card">
+            <div class="stat-row">
+                <span class="stat-label">{{ t('cols.total_mkt_cap') }}</span>
+                <span class="stat-value">{{ format_market_cap(market_stats[code].total_market_cap, code) }}</span>
+            </div>
+        </div>
+        <div class="card">
+            <div class="stat-row">
+                <span class="stat-label">{{ t('cols.gainers_today') }}</span>
+                <span class="stat-value up">{{ market_stats[code].gainers_count }}</span>
+            </div>
+        </div>
+        <div class="card">
+            <div class="stat-row">
+                <span class="stat-label">{{ t('cols.losers_today') }}</span>
+                <span class="stat-value down">{{ market_stats[code].losers_count }}</span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Top Gainers and Losers -->
+    <div class="grid" style="margin-bottom: 16px;">
+        <!-- Top 5 Gainers -->
+        <div class="card">
+            <h2>{{ t('market.top_gainers') }}</h2>
+            {% if top_gainers.get(code) %}
+            {% for s in top_gainers[code] %}
+            <div style="padding: 6px 0; border-bottom: 1px solid #21262d; display:flex; align-items:center; gap:8px;">
+                <div style="flex:1; min-width:0;">
+                    <a href="/companies/{{ s.ticker }}" style="color: #58a6ff; text-decoration: none; font-weight: 600;">{{ s.ticker }}</a>
+                    <span class="flat" style="font-size: 11px; margin-left: 4px;">{{ s.name[:18] }}</span>
+                </div>
+                {% if s.sparkline %}
+                <svg viewBox="0 0 80 24" width="72" height="18" style="flex-shrink:0;">
+                    <polyline points="{{ s.sparkline }}" fill="none" stroke="#3fb950" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+                </svg>
+                {% endif %}
+                <span class="up" style="font-weight:600; flex-shrink:0; min-width:44px; text-align:right;">
+                    {% if s.return_1d is not none and s.return_1d == s.return_1d %}+{{ "%.2f"|format(s.return_1d * 100) }}%{% else %}-{% endif %}
+                </span>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="empty">No data</div>
+            {% endif %}
+        </div>
+
+        <!-- Top 5 Losers -->
+        <div class="card">
+            <h2>{{ t('market.top_losers') }}</h2>
+            {% if top_losers.get(code) %}
+            {% for s in top_losers[code] %}
+            <div style="padding: 6px 0; border-bottom: 1px solid #21262d; display:flex; align-items:center; gap:8px;">
+                <div style="flex:1; min-width:0;">
+                    <a href="/companies/{{ s.ticker }}" style="color: #58a6ff; text-decoration: none; font-weight: 600;">{{ s.ticker }}</a>
+                    <span class="flat" style="font-size: 11px; margin-left: 4px;">{{ s.name[:18] }}</span>
+                </div>
+                {% if s.sparkline %}
+                <svg viewBox="0 0 80 24" width="72" height="18" style="flex-shrink:0;">
+                    <polyline points="{{ s.sparkline }}" fill="none" stroke="#f85149" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+                </svg>
+                {% endif %}
+                <span class="down" style="font-weight:600; flex-shrink:0; min-width:44px; text-align:right;">
+                    {% if s.return_1d is not none and s.return_1d == s.return_1d %}{{ "%.2f"|format(s.return_1d * 100) }}%{% else %}-{% endif %}
+                </span>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="empty">No data</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ═══ Section 2: Full Stock Table ═══ -->
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h2 style="margin-bottom: 0; border-bottom: none; padding-bottom: 0;">
+                {{ t('market.all_stocks') }} — {{ code }}
+                <span class="badge">{{ stocks_by_market.get(code, [])|length }}</span>
+            </h2>
+            <input type="text" class="stock-search" data-market="{{ code }}"
+                   placeholder="{{ t('common.search_placeholder') }}"
+                   oninput="searchStocks(this, '{{ code }}')"
+                   style="background: #0d1117; border: 1px solid #30363d; color: #c9d1d9;
+                          padding: 6px 12px; border-radius: 4px; font-size: 13px; width: 260px;
+                          outline: none;">
+        </div>
+        <div class="scroll-table" style="max-height: 600px;">
+            {% if stocks_by_market.get(code) %}
+            <table id="stock-table-{{ code }}">
+                <thead>
+                <tr>
+                    <th class="sortable" onclick="sortTable('{{ code }}', 0, 'alpha')">Ticker <span class="sort-arrow"></span></th>
+                    <th class="sortable" onclick="sortTable('{{ code }}', 1, 'alpha')">Name <span class="sort-arrow"></span></th>
+                    <th class="sortable" onclick="sortTable('{{ code }}', 2, 'alpha')">Sector <span class="sort-arrow"></span></th>
+                    <th class="sortable" onclick="sortTable('{{ code }}', 3, 'alpha')">Subsector <span class="sort-arrow"></span></th>
+                    <th class="sortable" onclick="sortTable('{{ code }}', 4, 'num')">Close <span class="sort-arrow"></span></th>
+                    <th class="sortable" onclick="sortTable('{{ code }}', 5, 'num')">1d % <span class="sort-arrow"></span></th>
+                    <th>30d</th>
+                    <th class="sortable" onclick="sortTable('{{ code }}', 7, 'num')">Volume <span class="sort-arrow"></span></th>
+                    <th class="sortable" onclick="sortTable('{{ code }}', 8, 'num')">Vol Ratio <span class="sort-arrow"></span></th>
+                    <th class="sortable" onclick="sortTable('{{ code }}', 9, 'num')">Mkt Cap <span class="sort-arrow"></span></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for s in stocks_by_market[code] %}
+                <tr data-ticker="{{ s.ticker|lower }}" data-name="{{ s.name|lower }}" data-subsector="{{ s.subsector|lower if s.subsector else '' }}">
+                    <td>
+                        <a href="/companies/{{ s.ticker }}" style="color: #58a6ff; text-decoration: none;">
+                            <strong>{{ s.ticker }}</strong>
+                        </a>
+                    </td>
+                    <td>{{ s.name }}</td>
+                    <td class="flat" style="font-size: 11px;">{{ s.sector }}</td>
+                    <td class="flat" style="font-size: 11px; color: #8b949e;">{{ s.subsector if s.subsector else '—' }}</td>
+                    <td>{{ "%.2f"|format(s.close) if s.close else '-' }}</td>
+                    <td class="{{ 'up' if s.get('return_1d') and s.return_1d > 0 else 'down' if s.get('return_1d') and s.return_1d < 0 else 'flat' }}"
+                        data-sort-value="{{ s.return_1d if s.return_1d is not none and s.return_1d == s.return_1d else 0 }}">
+                        {% if s.return_1d is not none and s.return_1d == s.return_1d %}{{ "%.2f"|format(s.return_1d * 100) }}%{% else %}-{% endif %}
+                    </td>
+                    <td style="padding: 4px 8px;">
+                        {% if s.sparkline %}
+                        {% set line_color = '#3fb950' if s.get('return_1d') and s.return_1d > 0 else '#f85149' if s.get('return_1d') and s.return_1d < 0 else '#484f58' %}
+                        <svg viewBox="0 0 80 24" width="72" height="16" style="display:block;">
+                            <polyline points="{{ s.sparkline }}" fill="none" stroke="{{ line_color }}"
+                                stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+                        </svg>
+                        {% else %}
+                        <span class="flat">—</span>
+                        {% endif %}
+                    </td>
+                    <td data-sort-value="{{ s.volume if s.volume else 0 }}">
+                        {{ "{:,.0f}".format(s.volume) if s.volume else '-' }}
+                    </td>
+                    <td data-sort-value="{{ s.volume_ratio if s.volume_ratio and s.volume_ratio == s.volume_ratio else 0 }}">
+                        {{ "%.1f"|format(s.volume_ratio) if s.volume_ratio and s.volume_ratio == s.volume_ratio else '-' }}x
+                    </td>
+                    <td data-sort-value="{{ s.market_cap if s.market_cap else 0 }}">
+                        {{ format_market_cap(s.market_cap, code) }}
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty">{{ t('market.no_stock_data') }}</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<style>
+    .sortable {
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+    }
+    .sortable:hover {
+        color: #58a6ff;
+    }
+    .sort-arrow {
+        font-size: 10px;
+        margin-left: 2px;
+        color: #58a6ff;
+    }
+    .stock-search:focus {
+        border-color: #58a6ff !important;
+    }
+</style>
+
+<script>
+/* ── Market Tab Switching ── */
+function switchMarket(code) {
+    document.querySelectorAll('.market-panel').forEach(function(el) {
+        el.style.display = 'none';
+    });
+    var panel = document.querySelector('.market-panel[data-market="' + code + '"]');
+    if (panel) panel.style.display = 'block';
+
+    document.querySelectorAll('#market-tabs .market-tab').forEach(function(el) {
+        el.classList.remove('active');
+    });
+    var tabs = document.querySelectorAll('#market-tabs .market-tab');
+    for (var i = 0; i < tabs.length; i++) {
+        if (tabs[i].getAttribute('href') === '/market/' + code) {
+            tabs[i].classList.add('active');
+        }
+    }
+
+    history.pushState(null, '', '/market/' + code);
+}
+
+/* ── Search / Filter ── */
+function searchStocks(input, market) {
+    var query = input.value.toLowerCase().trim();
+    var table = document.getElementById('stock-table-' + market);
+    if (!table) return;
+    var rows = table.querySelectorAll('tbody tr');
+    for (var i = 0; i < rows.length; i++) {
+        var ticker = rows[i].getAttribute('data-ticker') || '';
+        var name = rows[i].getAttribute('data-name') || '';
+        var subsector = rows[i].getAttribute('data-subsector') || '';
+        if (!query || ticker.indexOf(query) !== -1 || name.indexOf(query) !== -1 || subsector.indexOf(query) !== -1) {
+            rows[i].style.display = '';
+        } else {
+            rows[i].style.display = 'none';
+        }
+    }
+}
+
+/* ── Column Sorting ── */
+var sortState = {};
+
+function sortTable(market, colIndex, sortType) {
+    var table = document.getElementById('stock-table-' + market);
+    if (!table) return;
+
+    var key = market + '-' + colIndex;
+    if (sortState[key] === 'asc') {
+        sortState[key] = 'desc';
+    } else {
+        sortState[key] = 'asc';
+    }
+    var ascending = sortState[key] === 'asc';
+
+    var tbody = table.querySelector('tbody');
+    var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+
+    rows.sort(function(a, b) {
+        var aCell = a.cells[colIndex];
+        var bCell = b.cells[colIndex];
+        var aVal, bVal;
+
+        if (sortType === 'num') {
+            aVal = parseFloat(aCell.getAttribute('data-sort-value') || aCell.textContent.replace(/[^0-9.\-]/g, '')) || 0;
+            bVal = parseFloat(bCell.getAttribute('data-sort-value') || bCell.textContent.replace(/[^0-9.\-]/g, '')) || 0;
+        } else {
+            aVal = aCell.textContent.trim().toLowerCase();
+            bVal = bCell.textContent.trim().toLowerCase();
+        }
+
+        if (aVal < bVal) return ascending ? -1 : 1;
+        if (aVal > bVal) return ascending ? 1 : -1;
+        return 0;
+    });
+
+    for (var i = 0; i < rows.length; i++) {
+        tbody.appendChild(rows[i]);
+    }
+
+    var headers = table.querySelectorAll('thead th');
+    for (var j = 0; j < headers.length; j++) {
+        var arrow = headers[j].querySelector('.sort-arrow');
+        if (arrow) {
+            if (j === colIndex) {
+                arrow.textContent = ascending ? ' \u25B2' : ' \u25BC';
+            } else {
+                arrow.textContent = '';
+            }
+        }
+    }
+}
+</script>
+{% endblock %}

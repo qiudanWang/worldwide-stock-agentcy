@@ -1,0 +1,433 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header-row">
+    <h1>{{ t('dashboard.title') }}</h1>
+    <span class="meta">
+        {% if snapshot_date %}{{ t('dashboard.snapshot') }} {{ snapshot_date }} | {% endif %}
+        {{ t('dashboard.updated') }} {{ now }}
+    </span>
+</div>
+
+<!-- Index Ribbon -->
+{% if indices %}
+<div class="index-ribbon">
+    {% for idx in indices %}
+    <div class="index-chip">
+        <div class="label">{{ idx.name }} <span class="flat">{{ idx.market }}</span></div>
+        <div style="display: flex; align-items: baseline; gap: 6px; margin-top: 2px;">
+            <span class="value">{{ "%.0f"|format(idx.close) if idx.close > 1000 else "%.2f"|format(idx.close) }}</span>
+            {% if idx.change_pct is not none %}
+            <span class="change {{ 'up' if idx.change_pct > 0 else 'down' if idx.change_pct < 0 else 'flat' }}">
+                {{ "%+.2f"|format(idx.change_pct) }}%
+            </span>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Stats + Macro Row -->
+<div class="grid-4" style="margin-bottom: 16px;">
+    <!-- Macro Snapshot -->
+    <div class="card">
+        <h2><a href="/macro">{{ t('dashboard.macro_snapshot') }} ↗</a></h2>
+        {% if macro_latest %}
+        {% for name, data in macro_latest.items() %}
+        {% if loop.index <= 6 %}
+        {% set chg_cls = 'up' if data.change_pct and data.change_pct > 0 else 'down' if data.change_pct and data.change_pct < 0 else 'flat' %}
+        <div style="padding: 6px 0; border-bottom: 1px solid #21262d;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                <span class="stat-label" style="font-size: 12px;">{{ name }}</span>
+                <span style="display: flex; align-items: baseline; gap: 5px;">
+                    <span class="stat-value" style="font-size: 13px;">
+                        {% if data.value is not none %}{% if data.value > 1000 %}{{ "{:,.0f}".format(data.value) }}{% else %}{{ "%.2f"|format(data.value) }}{% endif %}{% else %}-{% endif %}
+                    </span>
+                    {% if data.change_pct is not none %}
+                    <span class="{{ chg_cls }}" style="font-size: 11px;">{{ "%+.1f"|format(data.change_pct * 100) }}%</span>
+                    {% endif %}
+                </span>
+            </div>
+            {% if data.sparkline %}
+            <div style="display: flex; align-items: center; gap: 6px; margin-top: 3px;">
+                <svg viewBox="0 0 80 24" width="72" height="14" style="flex-shrink:0;">
+                    <polyline points="{{ data.sparkline }}"
+                        fill="none"
+                        stroke="{{ '#3fb950' if data.change_pct and data.change_pct >= 0 else '#f85149' }}"
+                        stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+                </svg>
+                {% if data.range_pct is not none %}
+                <div style="flex:1; position:relative; background:#21262d; border-radius:2px; height:4px;">
+                    <div style="position:absolute; left:{{ data.range_pct }}%; width:6px; height:6px; background:{{ '#3fb950' if data.change_pct and data.change_pct >= 0 else '#f85149' }}; border-radius:50%; top:-1px; transform:translateX(-50%);"></div>
+                </div>
+                <span style="font-size:10px; color:#484f58; white-space:nowrap;">
+                    {% if data.spark_lo is not none %}{% if data.spark_lo > 1000 %}{{ "{:,.0f}".format(data.spark_lo) }}{% else %}{{ "%.0f"|format(data.spark_lo) }}{% endif %}–{% if data.spark_hi > 1000 %}{{ "{:,.0f}".format(data.spark_hi) }}{% else %}{{ "%.0f"|format(data.spark_hi) }}{% endif %}{% endif %}
+                </span>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% endfor %}
+        {% else %}
+        <div class="empty">{{ t('dashboard.no_macro') }}</div>
+        {% endif %}
+    </div>
+
+    <!-- Market Stats -->
+    <div class="card">
+        <h2><a href="/market">{{ t('dashboard.market_stats') }} ↗</a></h2>
+        {% set total = market_counts.values()|sum if market_counts else 0 %}
+
+        <!-- Total + markets -->
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+            <div style="text-align:center; flex:1;">
+                <div class="stat-value" style="font-size:20px;">{{ total }}</div>
+                <div class="stat-label" style="font-size:10px;">stocks</div>
+            </div>
+            <div style="text-align:center; flex:1;">
+                <div class="stat-value" style="font-size:20px;">{{ market_counts|length }}</div>
+                <div class="stat-label" style="font-size:10px;">markets</div>
+            </div>
+            <div style="text-align:center; flex:1;">
+                <div class="stat-value" style="font-size:20px;">{{ market_stats.total_alerts or 0 }}</div>
+                <div class="stat-label" style="font-size:10px;">alerts</div>
+            </div>
+        </div>
+
+        <!-- Advance / Decline bar -->
+        {% if market_stats and market_stats.n_up is defined %}
+        <div style="margin-bottom:8px;">
+            <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:3px;">
+                <span class="up">▲ {{ market_stats.n_up }} advancing</span>
+                <span class="flat">{{ market_stats.n_flat }} flat</span>
+                <span class="down">▼ {{ market_stats.n_down }} declining</span>
+            </div>
+            {% set total_w = market_stats.n_up + market_stats.n_down + market_stats.n_flat %}
+            {% if total_w > 0 %}
+            <div style="display:flex; height:6px; border-radius:3px; overflow:hidden;">
+                <div style="width:{{ (market_stats.n_up / total_w * 100)|round }}%; background:#3fb950;"></div>
+                <div style="width:{{ (market_stats.n_flat / total_w * 100)|round }}%; background:#484f58;"></div>
+                <div style="width:{{ (market_stats.n_down / total_w * 100)|round }}%; background:#f85149;"></div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Top gainer / loser -->
+        {% if market_stats.top_gainer %}
+        <div style="padding:4px 0; border-bottom:1px solid #21262d; font-size:12px;">
+            <span class="stat-label">Best</span>
+            <span style="float:right; display:flex; align-items:baseline; gap:6px;">
+                <a href="/companies/{{ market_stats.top_gainer.ticker }}" style="color:#58a6ff; text-decoration:none; font-weight:600;">{{ market_stats.top_gainer.ticker }}</a>
+                <span class="flat" style="font-size:10px;">{{ market_stats.top_gainer.market }}</span>
+                <span class="up">{{ "%+.2f"|format(market_stats.top_gainer.return_1d * 100) }}%</span>
+            </span>
+        </div>
+        {% endif %}
+        {% if market_stats.top_loser %}
+        <div style="padding:4px 0; border-bottom:1px solid #21262d; font-size:12px;">
+            <span class="stat-label">Worst</span>
+            <span style="float:right; display:flex; align-items:baseline; gap:6px;">
+                <a href="/companies/{{ market_stats.top_loser.ticker }}" style="color:#58a6ff; text-decoration:none; font-weight:600;">{{ market_stats.top_loser.ticker }}</a>
+                <span class="flat" style="font-size:10px;">{{ market_stats.top_loser.market }}</span>
+                <span class="down">{{ "%+.2f"|format(market_stats.top_loser.return_1d * 100) }}%</span>
+            </span>
+        </div>
+        {% endif %}
+
+        <!-- Per-market breadth mini-bars -->
+        <div style="margin-top:8px;">
+        {% for mkt, b in market_stats.breadth_by_market.items() %}
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:3px;">
+            <span class="flat" style="font-size:10px; width:28px; flex-shrink:0;">{{ mkt }}</span>
+            <div style="flex:1; display:flex; height:4px; border-radius:2px; overflow:hidden;">
+                <div style="width:{{ b.pct }}%; background:#3fb950;"></div>
+                <div style="width:{{ 100 - b.pct }}%; background:#f85149;"></div>
+            </div>
+            <span style="font-size:10px; color:#8b949e; width:30px; text-align:right;">{{ b.pct }}%↑</span>
+        </div>
+        {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Geo News Summary -->
+    <div class="card">
+        <h2><a href="/news">{{ t('dashboard.geopolitical') }} ↗</a></h2>
+        {% if geo and geo.get('news') %}
+        <!-- Feed sources list -->
+        <div style="margin-bottom:8px;">
+            <div style="font-size:10px; color:#484f58; margin-bottom:4px;">
+                {{ geo_feeds|length }} sources monitored · {{ geo.relevant_items }} tech-relevant items
+            </div>
+            <div style="display:flex; flex-wrap:wrap; gap:3px;">
+                {% for name, url in geo_feeds.items() %}
+                <a href="{{ url }}" target="_blank" title="Open {{ name }} feed"
+                   style="font-size:9px; color:#58a6ff; background:#161b22; border:1px solid #30363d; border-radius:3px; padding:1px 5px; white-space:nowrap; text-decoration:none;"
+                   onmouseover="this.style.borderColor='#58a6ff'" onmouseout="this.style.borderColor='#30363d'">{{ name }} ↗</a>
+                {% endfor %}
+            </div>
+        </div>
+        <!-- News headlines -->
+        {% for n in geo.news[:4] %}
+        <div style="padding: 6px 0; border-bottom: 1px solid #21262d; font-size: 12px;">
+            <div style="font-size:10px; color:#484f58; margin-bottom:2px;">{{ n.source }}</div>
+            <a href="{{ n.link }}" target="_blank" style="color: #58a6ff; text-decoration: none; line-height: 1.4;"
+               onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">
+                {{ n.title[:72] }}{% if n.title|length > 72 %}…{% endif %}
+            </a>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="empty">{{ t('dashboard.no_geo') }}</div>
+        {% endif %}
+    </div>
+
+    <!-- Polymarket -->
+    <div class="card">
+        <h2><a href="/macro">Prediction Markets ↗</a></h2>
+        {% if polymarket %}
+        <div style="font-size:10px; color:#484f58; margin-bottom:6px;">via Polymarket · live crowd odds</div>
+        {% for m in polymarket %}
+        {% set prob = (m.yes_prob * 100)|round|int %}
+        {% set bar_color = '#3fb950' if prob >= 60 else '#f85149' if prob <= 40 else '#d29922' %}
+        <div style="padding:5px 0; border-bottom:1px solid #21262d;">
+            <a href="{{ m.url }}" target="_blank" style="color:#c9d1d9; text-decoration:none; font-size:12px; line-height:1.4; display:block;"
+               onmouseover="this.style.color='#58a6ff'" onmouseout="this.style.color='#c9d1d9'">
+                {{ m.question[:60] }}{% if m.question|length > 60 %}…{% endif %}
+            </a>
+            <div style="display:flex; align-items:center; gap:5px; margin-top:3px;">
+                <div style="flex:1; background:#21262d; border-radius:2px; height:4px;">
+                    <div style="width:{{ prob }}%; background:{{ bar_color }}; height:4px; border-radius:2px;"></div>
+                </div>
+                <span style="font-size:11px; font-weight:600; color:{{ bar_color }}; min-width:30px; text-align:right;">{{ prob }}%</span>
+            </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="empty">No data</div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Sector Heatmap (if available) -->
+{% if heatmap_markets %}
+<div class="card full-width" style="margin-bottom: 16px;">
+    <h2><a href="/sectors">{{ t('dashboard.sector_heatmap') }} ↗</a></h2>
+    <div style="overflow-x: auto;">
+    <table>
+        <tr>
+            <th>{{ t('cols.sector') }}</th>
+            {% for m in heatmap_markets %}<th>{{ m }}</th>{% endfor %}
+        </tr>
+        {% for sector in heatmap_sectors %}
+        <tr>
+            <td>{{ sector }}</td>
+            {% for m in heatmap_markets %}
+                {% set cell = heatmap.get(sector, {}).get(m) %}
+                {% if cell %}
+                <td class="{{ cell.cls }}">{{ cell.val }}%</td>
+                {% else %}
+                <td class="flat">-</td>
+                {% endif %}
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </table>
+    </div>
+</div>
+{% endif %}
+
+<div class="grid">
+    {% set _ALERT_LABEL = {'gap_alert':'Gap','price_alert':'Price Move','volume_surge':'Volume Surge','volume_spike':'Volume Spike','news_spike':'News Spike','macro_alert':'Macro','sector_rotation':'Sector Rotation','cross_market_divergence':'Cross-Market','index_breakout':'Index Breakout','peer_divergence':'Peer Divergence','capital_flow':'Capital Flow'} %}
+
+    <!-- Alerts -->
+    <div class="card">
+        <h2>{{ t('dashboard.alerts') }} <a href="/alerts" style="color: #58a6ff; font-size: 11px; text-decoration: none; float: right;">{{ t('common.view_all') }}</a></h2>
+        {% if alerts %}
+        <div style="display:flex; gap:4px; flex-wrap:wrap; margin-bottom:10px;">
+            <button onclick="filterAlerts('All')" id="alert-tab-All" class="market-tab active" style="cursor:pointer; border:none;">All</button>
+            {% for mkt in market_codes %}
+            <button onclick="filterAlerts('{{ mkt }}')" id="alert-tab-{{ mkt }}" class="market-tab" style="cursor:pointer; border:none;">{{ mkt }}</button>
+            {% endfor %}
+        </div>
+        <div class="scroll-table">
+        <table>
+            <tr>
+                <th>{{ t('cols.type') }}</th>
+                <th>{{ t('cols.mkt') }}</th>
+                <th>Subject</th>
+                <th>{{ t('cols.detail') }}</th>
+            </tr>
+            {% for a in alerts %}
+            {% set is_stock = a.alert_type in ('gap_alert','price_alert','volume_surge','volume_spike','news_spike','capital_flow','peer_divergence') %}
+            <tr class="alert-row" data-market="{{ a.get('market', '') }}">
+                <td style="white-space:nowrap; font-size:12px; color:#8b949e;">{{ _ALERT_LABEL.get(a.alert_type, a.alert_type.replace('_',' ').title()) }}</td>
+                <td class="flat">{{ a.get('market', '') }}</td>
+                <td>
+                    {% if is_stock and a.get('ticker') %}
+                        <a href="/companies/{{ a.ticker }}" style="color: #58a6ff; text-decoration: none;"><strong>{{ a.ticker }}</strong></a>
+                        {% if a.get('name') %}<span class="flat" style="font-size:11px; margin-left:4px;">{{ a.name[:28] }}</span>{% endif %}
+                    {% elif a.get('sector') %}
+                        <span style="color: #c9d1d9; font-size:12px;">{{ a.sector }}</span>
+                    {% elif a.get('name') %}
+                        <span style="color: #c9d1d9; font-size:12px;">{{ a.name }}</span>
+                    {% elif a.get('ticker') %}
+                        <span class="flat">{{ a.ticker }}</span>
+                    {% endif %}
+                </td>
+                <td style="font-size: 12px; color: #c9d1d9;">
+                    {% if a.alert_type == 'sector_rotation' %}
+                        {% if a.get('signal') %}
+                            {% set gaining = 'gaining' in a.signal %}
+                            <span style="color: {{ '#3fb950' if gaining else '#f85149' }}; font-weight:600;">{{ '▲' if gaining else '▼' }}</span>
+                            <span style="color: #c9d1d9;">{{ a.signal }}</span>
+                        {% endif %}
+                    {% elif a.alert_type == 'macro_alert' %}
+                        {% if a.get('signal') %}{{ a.signal }}{% endif %}
+                    {% elif a.alert_type == 'cross_market_divergence' %}
+                        {% if a.get('signal') %}
+                            <span style="color:#d29922;">{{ a.signal }}</span>
+                        {% else %}
+                            <span class="flat">cross-market divergence detected</span>
+                        {% endif %}
+                    {% elif a.alert_type in ('volume_spike', 'volume_surge') %}
+                        {% if a.get('volume_ratio') %}
+                            <span style="color:#d29922; font-weight:600;">{{ "%.1f"|format(a.volume_ratio) }}x</span> volume
+                        {% endif %}
+                        {% if a.get('return_1d') is not none and a.return_1d == a.return_1d %}
+                            &nbsp;·&nbsp;<span class="{{ 'up' if a.return_1d > 0 else 'down' if a.return_1d < 0 else 'flat' }}">{{ "%+.2f"|format(a.return_1d * 100) }}%</span>
+                        {% endif %}
+                    {% elif a.alert_type == 'news_spike' %}
+                        <span style="color:#d29922; font-weight:600;">{{ a.get('news_count_keyword', 0) }}</span> keyword-matched articles in 7d
+                    {% elif a.alert_type == 'capital_flow' %}
+                        {% if a.get('net_flow') %}
+                            {% set flow = a.net_flow %}
+                            <span style="color: {{ '#3fb950' if flow > 0 else '#f85149' }}; font-weight:600;">{{ '▲ Inflow' if flow > 0 else '▼ Outflow' }}</span>
+                            &nbsp;{{ "{:+,.0f}".format(flow) }}M
+                        {% endif %}
+                    {% elif a.alert_type == 'peer_divergence' %}
+                        {% if a.get('signal') %}{{ a.signal[:110] }}{% endif %}
+                    {% else %}
+                        {% if a.get('signal') %}{{ a.signal[:110] }}{% endif %}
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+        </div>
+        {% else %}
+            <div class="empty">{{ t('common.no_data') }}</div>
+        {% endif %}
+    </div>
+
+    <!-- Top Volume Ratio -->
+    <div class="card">
+        <h2>{{ t('dashboard.top_volume_ratio') }}</h2>
+        {% if market %}
+        <div style="display:flex; gap:4px; flex-wrap:wrap; margin-bottom:10px;">
+            <button onclick="filterVolume('All')" id="vol-tab-All" class="market-tab active" style="cursor:pointer; border:none;">All</button>
+            {% for mkt in market_codes %}
+            <button onclick="filterVolume('{{ mkt }}')" id="vol-tab-{{ mkt }}" class="market-tab" style="cursor:pointer; border:none;">{{ mkt }}</button>
+            {% endfor %}
+        </div>
+        <div class="scroll-table">
+        <table>
+            <tr>
+                <th>#</th>
+                <th>{{ t('cols.mkt') }}</th>
+                <th>{{ t('cols.ticker') }}</th>
+                <th>{{ t('cols.name') }}</th>
+                <th>{{ t('cols.vol_ratio') }}</th>
+                <th>{{ t('cols.return_1d') }}</th>
+            </tr>
+            {% for r in market %}
+            <tr class="vol-row" data-market="{{ r.market }}">
+                <td class="flat" style="color:#484f58;">{{ r.get('vol_rank', '') }}</td>
+                <td class="flat">{{ r.market }}</td>
+                <td><a href="/companies/{{ r.ticker }}" style="color: #58a6ff; text-decoration: none;"><strong>{{ r.ticker }}</strong></a></td>
+                <td>{{ r.get('name', r.ticker) }}</td>
+                <td>{{ "%.1f"|format(r.volume_ratio) if r.volume_ratio == r.volume_ratio else '-' }}x</td>
+                <td class="{{ 'up' if r.get('return_1d', 0) and r.return_1d > 0 else 'down' if r.get('return_1d', 0) and r.return_1d < 0 else 'flat' }}">
+                    {% if r.get('return_1d') is not none and r.return_1d == r.return_1d %}{{ "%.2f"|format(r.return_1d * 100) }}%{% else %}-{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+        </div>
+        {% else %}
+            <div class="empty">{{ t('dashboard.no_market_data') }}</div>
+        {% endif %}
+    </div>
+
+    <!-- News -->
+    <div class="card full-width">
+        <h2>Company News <a href="/news" style="color: #58a6ff; font-size: 11px; text-decoration: none; float: right;">View All</a></h2>
+
+        {% if news %}
+        <!-- Market tabs — all markets, not just those with news -->
+        <div style="display:flex; gap:4px; flex-wrap:wrap; margin-bottom:10px;">
+            <button onclick="filterNews('All')" id="news-tab-All" class="market-tab active" style="cursor:pointer; border:none;">All</button>
+            {% for mkt in market_codes %}
+            <button onclick="filterNews('{{ mkt }}')"
+                    id="news-tab-{{ mkt }}"
+                    class="market-tab"
+                    style="cursor:pointer; border:none;">{{ mkt }}</button>
+            {% endfor %}
+        </div>
+
+        <div class="scroll-table">
+        <table id="news-table">
+            <tr>
+                <th>Mkt</th>
+                <th>Ticker</th>
+                <th>Title</th>
+                <th>Source</th>
+                <th>Hits</th>
+            </tr>
+            {% for r in news %}
+            <tr class="news-row" data-market="{{ r.market }}">
+                <td class="flat">{{ r.market }}</td>
+                <td><a href="/companies/{{ r.ticker }}" style="color:#58a6ff; text-decoration:none; font-weight:600;">{{ r.ticker }}</a></td>
+                <td>
+                    <a href="{{ r.get('link', '#') }}" target="_blank" style="color: #c9d1d9; text-decoration: none;"
+                       onmouseover="this.style.color='#58a6ff'" onmouseout="this.style.color='#c9d1d9'">
+                        {{ r.title[:80] }}{% if r.title|length > 80 %}...{% endif %}
+                    </a>
+                </td>
+                <td class="flat">{{ r.get('publisher', r.get('source', '')) }}</td>
+                <td>{{ r.get('hit_count', 0) }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        </div>
+
+        <script>
+        function filterNews(market) {
+            document.querySelectorAll('.news-row').forEach(function(row) {
+                row.style.display = (market === 'All' || row.dataset.market === market) ? '' : 'none';
+            });
+            document.querySelectorAll('[id^="news-tab-"]').forEach(function(btn) { btn.classList.remove('active'); });
+            document.getElementById('news-tab-' + market).classList.add('active');
+        }
+        function filterAlerts(market) {
+            document.querySelectorAll('.alert-row').forEach(function(row) {
+                row.style.display = (market === 'All' || row.dataset.market === market) ? '' : 'none';
+            });
+            document.querySelectorAll('[id^="alert-tab-"]').forEach(function(b) { b.classList.remove('active'); });
+            document.getElementById('alert-tab-' + market).classList.add('active');
+        }
+        function filterVolume(market) {
+            document.querySelectorAll('.vol-row').forEach(function(row) {
+                row.style.display = (market === 'All' || row.dataset.market === market) ? '' : 'none';
+            });
+            document.querySelectorAll('[id^="vol-tab-"]').forEach(function(b) { b.classList.remove('active'); });
+            document.getElementById('vol-tab-' + market).classList.add('active');
+        }
+        </script>
+        {% else %}
+            <div class="empty">No news data available.</div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

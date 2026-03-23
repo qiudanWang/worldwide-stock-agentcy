@@ -1,0 +1,10 @@
+akshare
+yfinance
+pandas
+pyarrow
+pyyaml
+requests
+flask
+fredapi
+ddgs
+truststore

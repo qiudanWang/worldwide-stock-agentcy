@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}{{ t('peers.title') }} — {{ t('nav.brand') }}{% endblock %}
+{% block content %}
+<style>
+    .peer-filters {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+    }
+    .peer-filter-btn {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        color: #8b949e;
+        background: #21262d;
+        border: 1px solid #30363d;
+        text-decoration: none;
+    }
+    .peer-filter-btn:hover { color: #c9d1d9; border-color: #58a6ff; }
+    .peer-filter-btn.active { color: #58a6ff; border-color: #58a6ff; background: #0d1d30; }
+    .market-badge {
+        display: inline-block;
+        padding: 1px 6px;
+        border-radius: 3px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        margin-right: 4px;
+        background: #30363d;
+        color: #c9d1d9;
+    }
+    .market-badge.CN { background: #7c2d12; color: #fecaca; }
+    .market-badge.US { background: #1e3a5f; color: #bfdbfe; }
+    .market-badge.HK { background: #4a1d5e; color: #e9d5ff; }
+    .market-badge.JP { background: #7c2d2d; color: #fecaca; }
+    .market-badge.KR { background: #1e3a5f; color: #bfdbfe; }
+    .market-badge.TW { background: #065f46; color: #a7f3d0; }
+    .market-badge.IN { background: #7c4a12; color: #fde68a; }
+    .market-badge.UK { background: #1e3a5f; color: #bfdbfe; }
+    .market-badge.DE { background: #4a4a12; color: #fde68a; }
+    .market-badge.FR { background: #1e3a5f; color: #bfdbfe; }
+    .market-badge.AU { background: #065f46; color: #a7f3d0; }
+    .market-badge.BR { background: #065f46; color: #a7f3d0; }
+    .market-badge.SA { background: #065f46; color: #a7f3d0; }
+    .theme-label {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+        background: #0d1d30;
+        color: #58a6ff;
+        border: 1px solid #1f3d5f;
+    }
+    .company-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 5px 0;
+        border-bottom: 1px solid #21262d;
+    }
+    .company-row:last-child { border-bottom: none; }
+    .company-info {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .group-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+        border-bottom: 1px solid #30363d;
+        padding-bottom: 8px;
+    }
+    .group-markets {
+        display: flex;
+        gap: 3px;
+    }
+    .group-meta {
+        color: #484f58;
+        font-size: 11px;
+    }
+</style>
+
+
+<!-- Market filter tabs -->
+<div class="peer-filters">
+    <button class="peer-filter-btn active" onclick="filterMarket('all')">{{ t('peers.all_markets') }}</button>
+    {% for m in all_markets %}
+    <button class="peer-filter-btn" onclick="filterMarket('{{ m }}')" data-market="{{ m }}">{{ m }}</button>
+    {% endfor %}
+</div>
+
+{% if peer_groups %}
+<div class="grid">
+    {% for group in peer_groups %}
+    <div class="card peer-group-card" data-markets="{{ group.markets|join(',') }}">
+        <div class="group-header">
+            <div>
+                <span class="theme-label">{{ group.theme|replace('_', ' ')|title }}</span>
+                <span class="group-meta"> {{ group.company_count }} {{ t('common.companies') }}</span>
+            </div>
+            <div class="group-markets">
+                {% for m in group.markets %}
+                <span class="market-badge {{ m }}">{{ m }}</span>
+                {% endfor %}
+            </div>
+        </div>
+
+        {% for c in group.companies %}
+        <div class="company-row">
+            <div class="company-info">
+                <span class="market-badge {{ c.market }}">{{ c.market }}</span>
+                <a href="/companies/{{ c.ticker }}" style="color: #58a6ff; text-decoration: none; font-weight: 600;">{{ c.ticker }}</a>
+                <span class="flat" style="font-size: 12px;">{{ c.name }}</span>
+            </div>
+            <div>
+                {% if c.return_1d is defined and c.return_1d is not none %}
+                    {% if c.return_1d > 0 %}
+                    <span class="up">+{{ "%.1f"|format(c.return_1d * 100) }}%</span>
+                    {% elif c.return_1d < 0 %}
+                    <span class="down">{{ "%.1f"|format(c.return_1d * 100) }}%</span>
+                    {% else %}
+                    <span class="flat">0.0%</span>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card">
+    <div class="empty">{{ t('peers.no_data') }}</div>
+</div>
+{% endif %}
+
+<script>
+function filterMarket(market) {
+    document.querySelectorAll('.peer-filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if ((market === 'all' && !btn.dataset.market) || btn.dataset.market === market) {
+            btn.classList.add('active');
+        }
+    });
+    if (market === 'all') {
+        document.querySelector('.peer-filter-btn:first-child').classList.add('active');
+    }
+
+    document.querySelectorAll('.peer-group-card').forEach(card => {
+        if (market === 'all') {
+            card.style.display = '';
+        } else {
+            const markets = card.dataset.markets.split(',');
+            card.style.display = markets.includes(market) ? '' : 'none';
+        }
+    });
+}
+</script>
+{% endblock %}

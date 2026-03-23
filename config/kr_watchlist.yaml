@@ -1,0 +1,50 @@
+# South Korea stock watchlist — Tech stocks only
+
+semiconductor:
+  - "005930"  # Samsung Electronics
+  - "000660"  # SK Hynix
+  - "402340"  # SK Square
+  - "042700"  # Hanmi Semiconductor
+  - "403870"  # HPSP
+  - "058470"  # Leeno Industrial
+  - "005935"  # Samsung Electronics (Preferred)
+  - "357780"  # Soulbrain
+  - "009150"  # Samsung Electro-Mechanics
+  - "011070"  # LG Innotek
+
+electronics_and_display:
+  - "066570"  # LG Electronics
+  - "034730"  # SK Inc
+
+battery_and_ev_tech:
+  - "373220"  # LG Energy Solution
+  - "006400"  # Samsung SDI
+  - "051910"  # LG Chem (battery materials)
+  - "247540"  # Ecopro BM
+  - "086520"  # Ecopro
+
+internet_platforms:
+  - "035420"  # NAVER
+  - "035720"  # Kakao
+  - "377300"  # Kakao Pay
+  - "018260"  # Samsung SDS
+
+gaming:
+  - "259960"  # Krafton
+  - "263750"  # Pearl Abyss
+  - "112040"  # Wemade
+  - "251270"  # Netmarble
+  - "293490"  # Kakao Games
+  - "036570"  # NCsoft
+
+entertainment_tech:
+  - "352820"  # HYBE
+  - "035900"  # JYP Entertainment
+  - "041510"  # SM Entertainment
+
+semiconductor_equipment:
+  - "036930"  # JuSung Engineering
+
+cloud_and_ai:
+  - "035420"  # NAVER (cloud & AI platform)
+  - "035720"  # Kakao (AI & cloud services)

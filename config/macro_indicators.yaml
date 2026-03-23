@@ -1,0 +1,152 @@
+# Macro indicator definitions for the Global Agent
+
+sentiment:
+  - symbol: "^VIX"
+    name: VIX
+    source: yfinance
+    frequency: daily
+
+currencies:
+  - symbol: "DX-Y.NYB"
+    name: US Dollar Index (DXY)
+    source: yfinance
+    frequency: daily
+  - symbol: "EURUSD=X"
+    name: EUR/USD
+    source: yfinance
+    frequency: daily
+  - symbol: "CNY=X"
+    name: USD/CNY
+    source: yfinance
+    frequency: daily
+  - symbol: "JPY=X"
+    name: USD/JPY
+    source: yfinance
+    frequency: daily
+  - symbol: "INR=X"
+    name: USD/INR
+    source: yfinance
+    frequency: daily
+  - symbol: "GBPUSD=X"
+    name: GBP/USD
+    source: yfinance
+    frequency: daily
+  - symbol: "CAD=X"
+    name: USD/CAD
+    source: yfinance
+    frequency: daily
+  - symbol: "SEK=X"
+    name: USD/SEK
+    source: yfinance
+    frequency: daily
+  - symbol: "CHF=X"
+    name: USD/CHF
+    source: yfinance
+    frequency: daily
+
+commodities:
+  - symbol: "GC=F"
+    name: Gold
+    source: yfinance
+    frequency: daily
+  - symbol: "CL=F"
+    name: Oil WTI
+    source: yfinance
+    frequency: daily
+  - symbol: "HG=F"
+    name: Copper
+    source: yfinance
+    frequency: daily
+
+crypto:
+  - symbol: "BTC-USD"
+    name: Bitcoin
+    source: yfinance
+    frequency: daily
+
+fred_series:
+  daily:
+    - series_id: DFF
+      name: Fed Funds Rate
+    - series_id: DGS10
+      name: 10Y Treasury Yield
+    - series_id: DGS2
+      name: 2Y Treasury Yield
+    - series_id: ECBDFR
+      name: ECB Policy Rate
+  monthly:
+    - series_id: CPIAUCSL
+      name: US CPI
+    - series_id: UNRATE
+      name: US Unemployment Rate
+    - series_id: PCE
+      name: US PCE
+    - series_id: CSUSHPINSA
+      name: US Case-Shiller HPI
+    - series_id: IRLTLT01DEM156N
+      name: Germany 10Y Yield
+    - series_id: IRLTLT01GBM156N
+      name: UK 10Y Yield
+    - series_id: IRLTLT01JPM156N
+      name: Japan 10Y Yield
+    - series_id: IRLTLT01FRM156N
+      name: France 10Y Yield
+    - series_id: IRLTLT01AUM156N
+      name: Australia 10Y Yield
+    - series_id: IRLTLT01KRM156N
+      name: Korea 10Y Yield
+    - series_id: IRSTCI01DEM156N
+      name: Germany ST Rate
+    - series_id: IRSTCI01GBM156N
+      name: UK ST Rate
+    - series_id: IRSTCI01JPM156N
+      name: Japan ST Rate
+    - series_id: IRSTCI01FRM156N
+      name: France ST Rate
+    - series_id: IRSTCI01AUM156N
+      name: Australia ST Rate
+    - series_id: IRSTCI01KRM156N
+      name: Korea ST Rate
+    - series_id: IRSTCI01BRM156N
+      name: Brazil ST Rate
+    - series_id: IRSTCI01INM156N
+      name: India ST Rate
+  quarterly:
+    - series_id: GDP
+      name: US GDP
+
+cn_macro:
+  - indicator: cn_gdp
+    name: China GDP
+    source: akshare
+    frequency: quarterly
+  - indicator: cn_cpi
+    name: China CPI
+    source: akshare
+    frequency: monthly
+  - indicator: cn_ppi
+    name: China PPI
+    source: akshare
+    frequency: monthly
+  - indicator: cn_pmi
+    name: China PMI
+    source: akshare
+    frequency: monthly
+
+world_bank:
+  - indicator: NY.GDP.MKTP.KD.ZG
+    name: GDP Growth
+    countries: [USA, CHN, JPN, IND, GBR, DEU, FRA, KOR, BRA, SAU, AUS]
+    frequency: annual
+  - indicator: FP.CPI.TOTL.ZG
+    name: CPI Inflation
+    countries: [USA, CHN, JPN, IND, GBR, DEU, FRA, KOR, BRA, SAU, AUS]
+    frequency: annual
+  - indicator: SL.UEM.TOTL.ZS
+    name: Unemployment Rate
+    countries: [USA, CHN, JPN, IND, GBR, DEU, FRA, KOR, BRA, SAU, AUS]
+    frequency: annual
+  - indicator: BN.CAB.XOKA.GD.ZS
+    name: Current Account Balance
+    countries: [USA, CHN, JPN, IND, GBR, DEU, FRA, KOR, BRA, SAU, AUS]
+    frequency: annual

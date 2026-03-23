@@ -1,0 +1,50 @@
+volume_alert:
+  volume_ratio_threshold: 2.0
+  volume_surge_threshold: 5.0  # extreme volume tier
+
+news_alert:
+  spike_threshold_7d: 2
+
+capital_flow_alert:
+  northbound_net_flow_threshold: 50000000
+
+earnings_alert:
+  days_before: 7
+
+peer_relative_alert:
+  us_peer_return_threshold: 0.03
+  peer_flat_threshold: 0.01
+
+# Macro alerts - lower thresholds, add new sub-types
+macro_alert:
+  vix_spike_threshold: 25
+  vix_elevated_threshold: 20
+  yield_curve_inversion: true
+  dxy_move_threshold: 0.01
+  oil_move_threshold: 0.03
+  gold_move_threshold: 0.02
+  btc_move_threshold: 0.05
+  rates_move_threshold: 0.05  # 5 basis points
+
+sector_rotation_alert:
+  rank_change_threshold: 3
+  return_divergence_threshold: 0.02
+
+cross_market_alert:
+  same_sector_divergence: 0.02
+  index_breakout_days: 20
+
+etf_flow_alert:
+  volume_spike_threshold: 1.5
+
+# New alert types
+price_alert:
+  daily_return_threshold: 0.05
+  weekly_return_threshold: 0.10
+
+gap_alert:
+  gap_threshold: 0.03
+
+correlation_break_alert:
+  correlation_threshold: 0.7
+  decorrelation_threshold: 0.3

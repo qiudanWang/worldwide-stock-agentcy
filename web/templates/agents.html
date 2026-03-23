@@ -1,0 +1,385 @@
+{% extends "base.html" %}
+{% block title %}{{ t('agents.title') }} — {{ t('nav.brand') }}{% endblock %}
+{% block content %}
+<style>
+    .container { max-width: 100% !important; padding: 16px 20px; }
+    .agents-container {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        height: calc(100vh - 70px);
+        transition: margin-right 0.3s ease;
+    }
+    .monitor-panel {
+        background: #0d1117;
+        border: 2px solid #30363d;
+        border-radius: 8px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+    .monitor-header {
+        background: #161b22;
+        border-bottom: 1px solid #30363d;
+        padding: 8px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    .monitor-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: #58a6ff;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    .monitor-body {
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+    }
+    #market-canvas, #global-canvas {
+        width: 100%;
+        height: 100%;
+        image-rendering: pixelated;
+    }
+    .status-green { background: #3fb950; }
+    .status-yellow { background: #d29922; }
+    .status-red { background: #f85149; }
+    .status-gray { background: #484f58; }
+    .pipeline-bar {
+        padding: 8px 16px;
+        background: #161b22;
+        border-top: 1px solid #30363d;
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .progress-track {
+        flex: 1;
+        height: 8px;
+        background: #21262d;
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    .progress-fill {
+        height: 100%;
+        background: #58a6ff;
+        border-radius: 4px;
+        transition: width 0.5s ease;
+    }
+    .agent-popup {
+        display: none;
+        position: absolute;
+        background: #161b22;
+        border: 1px solid #58a6ff;
+        border-radius: 6px;
+        padding: 12px;
+        z-index: 100;
+        min-width: 200px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+    .agent-popup.visible { display: block; }
+    .agent-popup h3 { font-size: 13px; color: #58a6ff; margin-bottom: 8px; }
+    .agent-popup .detail-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        padding: 3px 0;
+        border-bottom: 1px solid #21262d;
+    }
+    .agent-desc-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        padding: 0;
+        flex-shrink: 0;
+    }
+    .agent-desc-card {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 12px;
+        cursor: pointer;
+        transition: border-color 0.15s;
+    }
+    .agent-desc-card:hover { border-color: #58a6ff; }
+    .agent-desc-card .agent-card-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+    }
+    .agent-desc-card .agent-card-dot {
+        width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    }
+    .agent-desc-card .agent-card-name {
+        font-size: 12px; font-weight: 700; color: #c9d1d9;
+    }
+    .agent-desc-card .agent-card-desc {
+        font-size: 11px; color: #8b949e; line-height: 1.4; margin-bottom: 6px;
+    }
+    .agent-desc-card .agent-card-asks {
+        font-size: 10px; color: #58a6ff; line-height: 1.4;
+    }
+    .agent-desc-card .agent-card-asks span {
+        display: inline-block;
+        background: #0d1d30;
+        border: 1px solid #1f3d5f;
+        border-radius: 8px;
+        padding: 1px 6px;
+        margin: 1px 2px 1px 0;
+        cursor: pointer;
+    }
+    .agent-desc-card .agent-card-asks span:hover {
+        background: #1a3050;
+        border-color: #58a6ff;
+    }
+    @media (max-width: 1200px) {
+        .agent-desc-grid { grid-template-columns: 1fr; }
+    }
+
+</style>
+
+<div class="agents-container">
+    <div class="header-row" style="flex-shrink: 0; margin-bottom: 0;">
+        <h1>{{ t('agents.title') }}</h1>
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <button onclick="toggleLLMSettings()" style="
+                background: #21262d; border: 1px solid #30363d; color: #8b949e;
+                padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer;
+            " title="LLM Settings">&#9881; LLM</button>
+            <select id="run-scope" style="
+                background: #21262d; border: 1px solid #30363d; color: #c9d1d9;
+                padding: 6px 10px; border-radius: 6px; font-size: 12px; cursor: pointer;
+            ">
+                <option value="all">{{ t('agents.all_markets') }}</option>
+                {% for code in market_codes %}
+                <option value="{{ code }}">{{ code }} {{ t('common.only') }}</option>
+                {% endfor %}
+            </select>
+            <button id="run-btn" onclick="togglePipeline()" style="
+                background: #238636; border: 1px solid #2ea043; color: #fff;
+                padding: 6px 18px; border-radius: 6px; font-size: 13px;
+                font-weight: 600; cursor: pointer; display: flex;
+                align-items: center; gap: 6px; transition: background 0.15s;
+            ">
+                <span id="run-btn-icon">&#9654;</span><span id="run-btn-text"> {{ t('agents.run_pipeline') }}</span>
+            </button>
+            <label style="display:flex; align-items:center; gap:5px; font-size:12px; color:#8b949e; cursor:pointer;" title="Bypass all caches and re-fetch everything">
+                <input type="checkbox" id="run-force" style="cursor:pointer; accent-color:#f85149;">
+                Force
+            </label>
+        </div>
+    </div>
+    <div class="monitor-panel" style="flex: 1; min-height: 0;">
+        <div class="monitor-header">
+            <span class="monitor-title">{{ t('agents.title') }}</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="flat">{{ t('agents.pipeline') }}</span>
+                <span id="pipeline-progress-text" style="color: #c9d1d9; font-size: 12px;">-</span>
+                <div class="progress-track" style="width: 120px;">
+                    <div class="progress-fill" id="pipeline-progress-bar" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+        <div class="monitor-body">
+            <canvas id="market-canvas"></canvas>
+            <div class="agent-popup" id="agent-popup">
+                <h3 id="popup-title"></h3>
+                <div class="detail-row"><span>{{ t('agents.state') }}</span><span id="popup-state"></span></div>
+                <div class="detail-row"><span>{{ t('agents.progress') }}</span><span id="popup-progress"></span></div>
+                <div class="detail-row"><span>{{ t('agents.duration') }}</span><span id="popup-duration"></span></div>
+                <div class="detail-row"><span>{{ t('agents.records') }}</span><span id="popup-records"></span></div>
+                <div class="detail-row"><span>{{ t('agents.last_run') }}</span><span id="popup-lastrun"></span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Agent Description Cards -->
+    <div class="agent-desc-grid">
+        <div class="agent-desc-card">
+            <div class="agent-card-header">
+                <span class="agent-card-dot" style="background: #4a90d9;"></span>
+                <span class="agent-card-name">{{ t('agents.market_agents_title') }}</span>
+            </div>
+            <div class="agent-card-desc">Click any market agent on the floor to chat. Each combines stock data, news, and signals for its market. Type "analyze TICKER" for TradingAgents deep analysis.</div>
+            <div class="agent-card-asks">
+                {% for code in market_codes %}
+                <span onclick="openChat('{{ code }}_market')">{{ code }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="agent-desc-card" onclick="openChat('global')">
+            <div class="agent-card-header">
+                <span class="agent-card-dot" style="background: #45a54a;"></span>
+                <span class="agent-card-name">{{ t('agents.global_title') }}</span>
+            </div>
+            <div class="agent-card-desc">Analyzes macro indicators (VIX, rates, FX), sector rotation, cross-market correlations, and generates global-level alerts.</div>
+            <div class="agent-card-asks">
+                <span onclick="event.stopPropagation(); askAgentGlobal('{{ t('agents.quick_macro') }}')">{{ t('agents.quick_macro') }}</span>
+                <span onclick="event.stopPropagation(); askAgentGlobal('{{ t('agents.quick_sectors') }}')">{{ t('agents.quick_sectors') }}</span>
+                <span onclick="event.stopPropagation(); askAgentGlobal('{{ t('agents.quick_correlations') }}')">{{ t('agents.quick_correlations') }}</span>
+                <span onclick="event.stopPropagation(); askAgentGlobal('{{ t('agents.quick_peers') }}')">{{ t('agents.quick_peers') }}</span>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="/static/js/pixel-agents.js"></script>
+<script>
+    // Initialize the pixel agents trading floor
+    const marketCodes = {{ market_codes | tojson }};
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const marketCanvas = document.getElementById('market-canvas');
+
+        const floor = new TradingFloor(marketCanvas, marketCodes);
+        floor.start();
+        window.tradingFloor = floor;
+
+        // Poll agent status every 5 seconds
+        setInterval(() => floor.fetchStatus(), 5000);
+    });
+
+    window.runSingleAgent = async function(agentName) {
+        const force = document.getElementById('run-force').checked;
+        const body = agentName === 'global'
+            ? { agent: 'global', force }
+            : { scope: agentName.replace('_market', ''), force };
+        try {
+            const resp = await fetch('/api/run-pipeline', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const data = await resp.json();
+            if (data.error) alert(data.error);
+        } catch(e) { alert('Failed to start.'); }
+    };
+
+    // Stop the running agent from canvas stop button
+    window.stopSingleAgent = async function() {
+        try {
+            await fetch('/api/stop-pipeline', { method: 'POST' });
+        } catch(e) {}
+        // Also reset the top-level run button if it shows Stop
+        if (pipelineRunning) setRunBtn(false);
+        const progressText = document.getElementById('pipeline-progress-text');
+        if (progressText) progressText.textContent = 'Stopped';
+        if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+    };
+
+    // ── Pipeline Run / Stop ──────────────────────────────────────
+    let pipelineRunning = false;
+    let pollInterval = null;
+
+    function togglePipeline() {
+        if (pipelineRunning) stopPipeline();
+        else runPipeline();
+    }
+
+    function setRunBtn(running) {
+        pipelineRunning = running;
+        const btn = document.getElementById('run-btn');
+        const icon = document.getElementById('run-btn-icon');
+        const text = document.getElementById('run-btn-text');
+        if (running) {
+            btn.style.background = '#b91c1c';
+            btn.style.borderColor = '#ef4444';
+            icon.innerHTML = '&#9632;';
+            text.textContent = ' Stop';
+            btn.onmouseover = () => btn.style.background = '#dc2626';
+            btn.onmouseout  = () => btn.style.background = '#b91c1c';
+        } else {
+            btn.style.background = '#238636';
+            btn.style.borderColor = '#2ea043';
+            icon.innerHTML = '&#9654;';
+            text.textContent = ' {{ t("agents.run_pipeline") }}';
+            btn.onmouseover = () => btn.style.background = '#2ea043';
+            btn.onmouseout  = () => btn.style.background = '#238636';
+        }
+    }
+
+    async function runPipeline() {
+        const scope = document.getElementById('run-scope').value;
+        const force = document.getElementById('run-force').checked;
+        const progressText = document.getElementById('pipeline-progress-text');
+
+        setRunBtn(true);
+        if (progressText) progressText.textContent = 'Starting...';
+
+        try {
+            const resp = await fetch('/api/run-pipeline', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ scope, force }),
+            });
+            const data = await resp.json();
+            if (data.error) {
+                setRunBtn(false);
+                if (progressText) progressText.textContent = 'Error: ' + data.error;
+                return;
+            }
+        } catch(e) {
+            setRunBtn(false);
+            if (progressText) progressText.textContent = 'Failed to start';
+            return;
+        }
+
+        startPolling();
+    }
+
+    async function stopPipeline() {
+        try {
+            await fetch('/api/stop-pipeline', { method: 'POST' });
+        } catch(e) {}
+        setRunBtn(false);
+        if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+        const progressText = document.getElementById('pipeline-progress-text');
+        if (progressText) progressText.textContent = 'Stopped';
+    }
+
+    function startPolling() {
+        if (pollInterval) clearInterval(pollInterval);
+        pollInterval = setInterval(async () => {
+            try {
+                const sr = await fetch('/api/agent-status');
+                const sd = await sr.json();
+                const pipeline = sd.pipeline || {};
+                const state = pipeline.state || 'unknown';
+                const completed = pipeline.completed_agents || 0;
+                const total = pipeline.total_agents || 0;
+
+                if (window.tradingFloor) window.tradingFloor._updateFromStatus(sd);
+
+                const progressText = document.getElementById('pipeline-progress-text');
+                const pb = document.getElementById('pipeline-progress-bar');
+                if (progressText) progressText.textContent = `${state} — ${completed}/${total}`;
+                if (pb && total > 0) pb.style.width = `${completed/total*100}%`;
+
+                if (state !== 'running') {
+                    clearInterval(pollInterval);
+                    pollInterval = null;
+                    setRunBtn(false);
+                    if (progressText) progressText.textContent = `Done — ${completed}/${total}`;
+                }
+            } catch(e) {}
+        }, 2000);
+    }
+
+    // Sync button state with server on page load
+    document.addEventListener('DOMContentLoaded', async () => {
+        try {
+            const r = await fetch('/api/agent-status');
+            const d = await r.json();
+            if ((d.pipeline || {}).state === 'running') {
+                setRunBtn(true);
+                startPolling();
+            }
+        } catch(e) {}
+    });
+
+
+</script>
+{% endblock %}

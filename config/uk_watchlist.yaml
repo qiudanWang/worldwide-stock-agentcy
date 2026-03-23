@@ -1,0 +1,46 @@
+# UK stock watchlist — Tech stocks only
+# Tickers use London Stock Exchange symbols without ".L" suffix
+
+software_and_services:
+  - SAGE      # Sage Group
+  - AUTO      # Auto Trader Group
+  - EXPN      # Experian
+  - REL       # RELX
+  - KNOS      # Kainos Group
+  - BYIT      # Bytes Technology
+  - SCT       # Softcat
+
+data_and_analytics:
+  - OCDO      # Ocado Group (tech platform)
+  - INF       # Informa (data/analytics)
+
+industrial_technology:
+  - SMIN      # Smiths Group
+  - HLMA      # Halma
+  - OXIG      # Oxford Instruments
+
+fintech:
+  - WISE      # Wise PLC
+  - IGG       # IG Group Holdings
+
+healthcare:
+  - AZN       # AstraZeneca
+  - GSK       # GSK PLC
+  - SN        # Smith & Nephew
+  - HLN       # Haleon
+
+telecom:
+  - VOD       # Vodafone Group
+  - BT-A      # BT Group
+
+semiconductors:
+  - IQE       # IQE PLC
+  - CML       # CML Microsystems
+
+ev_and_energy:
+  - ITM       # ITM Power
+
+internet_and_media:
+  - RMV       # Rightmove
+  - WPP       # WPP Group (advertising/media)
+  - ITV       # ITV PLC (broadcaster)

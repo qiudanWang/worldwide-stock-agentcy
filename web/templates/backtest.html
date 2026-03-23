@@ -1,0 +1,807 @@
+{% extends "base.html" %}
+{% block title %}Backtest — Global Market Monitor{% endblock %}
+{% block content %}
+
+<style>
+/* ── Top bar ─────────────────────────────────────────────────────────────── */
+.bt-topbar {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+.bt-hint { font-size: 11px; color: #484f58; margin-left: auto; }
+
+.mkt-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.mkt-pill {
+    padding: 5px 14px; border-radius: 20px; border: 1px solid #30363d;
+    background: #0d1117; color: #8b949e; font-size: 12px; cursor: pointer; transition: all 0.15s;
+}
+.mkt-pill.active { border-color: #58a6ff; color: #58a6ff; background: #132338; }
+.mkt-pill:hover:not(.active) { color: #c9d1d9; border-color: #6e7681; }
+
+.date-inputs { display: flex; align-items: center; gap: 8px; }
+.date-inputs input[type=date] {
+    background: #0d1117; border: 1px solid #30363d; color: #c9d1d9;
+    padding: 5px 10px; border-radius: 6px; font-size: 12px;
+}
+.date-inputs input[type=date]:focus { outline: none; border-color: #58a6ff; }
+.date-sep { color: #484f58; font-size: 12px; }
+
+/* ── Main panel ──────────────────────────────────────────────────────────── */
+.bt-panel {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    border: 1px solid #21262d;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #161b22;
+    margin-bottom: 16px;
+}
+
+/* Left: strategy type nav */
+.bt-nav {
+    background: #0d1117;
+    border-right: 1px solid #21262d;
+    padding: 8px 0;
+}
+.bt-nav-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 16px; font-size: 13px; color: #8b949e;
+    cursor: pointer; transition: all 0.15s; border-left: 2px solid transparent;
+    user-select: none;
+}
+.bt-nav-item:hover { color: #c9d1d9; background: #161b22; }
+.bt-nav-item.active { color: #c9d1d9; border-left-color: #58a6ff; background: #161b22; }
+.bt-nav-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #30363d; flex-shrink: 0;
+}
+.bt-nav-item.active .bt-nav-dot { background: #58a6ff; }
+
+/* Right: strategy content */
+.bt-content {
+    padding: 20px 24px;
+    min-height: 220px;
+}
+.bt-pane { display: none; }
+.bt-pane.active { display: block; }
+
+/* ── Bottom bar ──────────────────────────────────────────────────────────── */
+.bt-bottombar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+.tf-pill {
+    padding: 7px 20px; border-radius: 20px; border: 1px solid #30363d;
+    background: #0d1117; color: #8b949e; font-size: 13px; cursor: pointer; transition: all 0.15s;
+}
+.tf-pill.active { border-color: #58a6ff; color: #58a6ff; background: #132338; }
+.tf-pill:hover:not(.active) { color: #c9d1d9; border-color: #6e7681; }
+
+.btn-run {
+    background: #238636; border: 1px solid #2ea043; color: #fff;
+    font-weight: 700; font-size: 13px; padding: 7px 24px; border-radius: 20px; cursor: pointer;
+    transition: all 0.15s; margin-left: auto;
+}
+.btn-run:hover { background: #2ea043; }
+.btn-refresh {
+    background: #161b22; border: 1px solid #30363d; color: #8b949e;
+    font-size: 12px; padding: 7px 14px; border-radius: 20px; cursor: pointer; transition: all 0.15s;
+}
+.btn-refresh:hover { color: #c9d1d9; border-color: #6e7681; }
+
+.status-badge { font-size: 12px; padding: 3px 10px; border-radius: 12px; background: #21262d; color: #8b949e; }
+.status-badge.running { background: #1c3a5e; color: #58a6ff; }
+.status-badge.done    { background: #132f1e; color: #3fb950; }
+.status-badge.error   { background: #3d1a1a; color: #f85149; }
+
+/* ── Strategy content internals ──────────────────────────────────────────── */
+.strategy-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.strategy-pill {
+    padding: 6px 16px; border-radius: 20px; border: 1px solid #30363d;
+    background: #0d1117; color: #8b949e; font-size: 12px; cursor: pointer; transition: all 0.15s;
+}
+.strategy-pill.active { border-color: #58a6ff; color: #58a6ff; background: #132338; }
+.strategy-pill:hover:not(.active) { color: #c9d1d9; border-color: #6e7681; }
+
+.code-editor {
+    width: 100%; min-height: 160px;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+    font-size: 12px; background: #0d1117; border: 1px solid #30363d;
+    color: #c9d1d9; padding: 10px; border-radius: 6px; resize: vertical; box-sizing: border-box;
+}
+.code-editor:focus { outline: none; border-color: #58a6ff; }
+
+.btn { padding: 5px 14px; border-radius: 6px; font-size: 12px; cursor: pointer; border: 1px solid transparent; transition: all 0.15s; }
+.btn-magic    { background: #1a1a3e; border-color: #6e40c9; color: #a371f7; }
+.btn-magic:hover { background: #2d2d5e; border-color: #a371f7; }
+.btn-validate { background: #132f1e; border-color: #2ea043; color: #3fb950; }
+.btn-validate:hover { background: #1b4128; }
+.btn-sm { padding: 3px 10px; font-size: 11px; }
+.btn-secondary { background: #21262d; border-color: #30363d; color: #c9d1d9; }
+.btn-secondary:hover { background: #30363d; }
+
+.inline-status { font-size: 12px; padding: 5px 10px; border-radius: 6px; margin-top: 8px; display: none; }
+.inline-status.ok   { background: #132f1e; color: #3fb950; border: 1px solid #2ea043; }
+.inline-status.err  { background: #3d1a1a; color: #f85149; border: 1px solid #f85149; }
+.inline-status.info { background: #1c3a5e; color: #58a6ff; border: 1px solid #58a6ff; }
+
+.data-ref { background: #0d1117; border: 1px solid #21262d; border-radius: 6px; font-size: 11px; margin-bottom: 12px; overflow: hidden; }
+.data-ref-title { padding: 6px 10px; color: #6e7681; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 5px; }
+.data-ref-title:hover { color: #8b949e; }
+.data-ref-body { padding: 8px 10px 10px; border-top: 1px solid #21262d; display: none; flex-direction: column; gap: 4px; }
+.data-ref-body.open { display: flex; }
+.data-ref-row { color: #8b949e; line-height: 1.6; }
+.data-ref-var { color: #79c0ff; font-family: monospace; }
+.data-ref-fields { color: #a5d6ff; font-family: monospace; }
+
+/* Ticker tags */
+.ticker-tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: #21262d; border: 1px solid #30363d; border-radius: 5px;
+    padding: 4px 8px; font-size: 12px; font-family: monospace; color: #c9d1d9;
+}
+.ticker-tag button {
+    background: none; border: none; color: #6e7681; cursor: pointer;
+    font-size: 12px; line-height: 1; padding: 0;
+}
+.ticker-tag button:hover { color: #f85149; }
+
+/* ── Results ─────────────────────────────────────────────────────────────── */
+.metrics-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px; margin-bottom: 18px;
+}
+.metric-card { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 14px 16px; text-align: center; }
+.metric-card .m-label { font-size: 11px; color: #6e7681; margin-bottom: 6px; }
+.metric-card .m-value { font-size: 22px; font-weight: 700; color: #c9d1d9; }
+.metric-card .m-value.up   { color: #3fb950; }
+.metric-card .m-value.down { color: #f85149; }
+
+.chart-wrap { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+.chart-wrap h3 { margin: 0 0 12px; font-size: 12px; color: #6e7681; text-transform: uppercase; letter-spacing: .5px; }
+
+.trades-table { font-size: 12px; }
+.trades-table th { position: sticky; top: 0; background: #161b22; z-index: 1; }
+.trades-table td.pnl-pos { color: #3fb950; }
+.trades-table td.pnl-neg { color: #f85149; }
+
+/* Preview table */
+.preview-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.preview-table th { text-align: left; padding: 5px 10px; color: #6e7681; font-weight: 500; border-bottom: 1px solid #21262d; font-size: 11px; white-space: nowrap; }
+.preview-table td { padding: 6px 10px; border-bottom: 1px solid #161b22; color: #c9d1d9; vertical-align: middle; }
+.preview-table tr:last-child td { border-bottom: none; }
+.preview-table tr:hover td { background: #161b22; }
+.preview-table tr.multi-signal td { background: #13233820; }
+.preview-table tr.multi-signal:hover td { background: #132338; }
+.pt-ticker { font-family: monospace; color: #58a6ff; font-weight: 600; }
+.pt-name   { color: #8b949e; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-sector { color: #6e7681; }
+.pt-strategy { color: #8b949e; font-size: 11px; }
+.pt-signals { color: #58a6ff; letter-spacing: 2px; font-size: 10px; }
+
+/* Results section only shows for active tf */
+.tf-result { display: none; }
+.tf-result.active { display: block; }
+</style>
+
+<!-- ── Top bar: market + dates ──────────────────────────────────────────── -->
+<div class="bt-topbar">
+    <div class="mkt-pills" id="mkt-pills">
+        {% for code in market_codes %}
+        <button class="mkt-pill {{ 'active' if loop.first }}" data-market="{{ code }}" onclick="selectMarket('{{ code }}')">{{ code }}</button>
+        {% endfor %}
+    </div>
+    <div class="date-inputs">
+        <div style="display:flex; flex-direction:column; gap:3px;">
+            <span style="font-size:10px; color:#6e7681;">START DATE <span style="color:#484f58; font-weight:400;">— backtest begins</span></span>
+            <input type="date" id="start-date">
+        </div>
+        <span class="date-sep" style="margin-top:16px;">→</span>
+        <div style="display:flex; flex-direction:column; gap:3px;">
+            <span style="font-size:10px; color:#6e7681;">END DATE <span style="color:#484f58; font-weight:400;">— backtest ends</span></span>
+            <input type="date" id="end-date">
+        </div>
+    </div>
+    <div class="bt-hint">Signal at T-close &rarr; execute T+1-open &middot; equal weight &middot; 0.1% commission</div>
+</div>
+
+<!-- ── Timeframe pills ───────────────────────────────────────────────────── -->
+<div style="display:flex; gap:8px; margin-bottom:16px;">
+    <div class="tf-pill active" data-tf="daily"   onclick="switchTf('daily')">Daily</div>
+    <div class="tf-pill"        data-tf="weekly"  onclick="switchTf('weekly')">Weekly</div>
+    <div class="tf-pill"        data-tf="monthly" onclick="switchTf('monthly')">Monthly</div>
+    <div class="tf-pill"        data-tf="yearly"  onclick="switchTf('yearly')">Yearly</div>
+</div>
+
+<!-- ── Main panel: strategy selector ───────────────────────────────────── -->
+<div class="bt-panel">
+
+    <!-- Left nav -->
+    <div class="bt-nav">
+        <div class="bt-nav-item active" onclick="selectSig('builtin')">
+            <div class="bt-nav-dot"></div> Built-in
+        </div>
+        <div class="bt-nav-item" onclick="selectSig('nl')">
+            <div class="bt-nav-dot"></div> Natural Language
+        </div>
+        <div class="bt-nav-item" onclick="selectSig('code')">
+            <div class="bt-nav-dot"></div> Write Python
+        </div>
+        <div class="bt-nav-item" onclick="selectSig('manual')">
+            <div class="bt-nav-dot"></div> Ticker List
+        </div>
+    </div>
+
+    <!-- Right content -->
+    <div class="bt-content">
+
+        <!-- Built-in -->
+        <div class="bt-pane active" id="pane-builtin">
+            <div style="font-size:11px; color:#6e7681; margin-bottom:10px;">SELECT ONE OR MORE — results are unioned</div>
+            <div class="strategy-pills" id="builtin-pills"></div>
+        </div>
+
+        <!-- Natural Language -->
+        <div class="bt-pane" id="pane-nl">
+            <div class="data-ref">
+                <div class="data-ref-title" onclick="toggleRef('nl-ref')">&#9432; Available fields <span id="nl-ref-arrow">&#9660;</span></div>
+                <div class="data-ref-body" id="nl-ref">
+                    <div class="data-ref-row"><span class="data-ref-var">universe_df</span> — <span class="data-ref-fields">ticker, name, sector, subsector</span></div>
+                    <div class="data-ref-row"><span class="data-ref-var">history[ticker]</span> — <span class="data-ref-fields">date, open, high, low, close, volume</span></div>
+                    <div class="data-ref-row"><span class="data-ref-var">date</span> — pd.Timestamp signal date. Filter: <span class="data-ref-fields">df[df['date'] &lt;= date]</span></div>
+                </div>
+            </div>
+            <div style="display:flex; gap:8px; align-items:flex-start;">
+                <textarea id="nl-description" rows="2"
+                    style="flex:1; font-size:13px; background:#0d1117; border:1px solid #30363d; color:#c9d1d9; padding:8px; border-radius:6px; resize:vertical;"
+                    placeholder="e.g. select top 10 stocks by 20-day momentum with volume above 20-day average"></textarea>
+                <button class="btn btn-magic" onclick="generateCode()">&#10024; Generate</button>
+            </div>
+            <div id="nl-status" class="inline-status"></div>
+            <div id="nl-code-wrap" style="display:none; margin-top:10px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                    <span style="font-size:11px; color:#6e7681;">Generated code (editable)</span>
+                    <button class="btn btn-validate btn-sm" onclick="validateCode('nl')">&#10003; Validate</button>
+                </div>
+                <textarea class="code-editor" id="nl-code" rows="10"></textarea>
+                <div id="nl-validate-status" class="inline-status"></div>
+            </div>
+        </div>
+
+        <!-- Write Python -->
+        <div class="bt-pane" id="pane-code">
+            <div class="data-ref">
+                <div class="data-ref-title" onclick="toggleRef('code-ref')">&#9432; Available fields <span id="code-ref-arrow">&#9660;</span></div>
+                <div class="data-ref-body" id="code-ref">
+                    <div class="data-ref-row"><span class="data-ref-var">universe_df</span> — <span class="data-ref-fields">ticker, name, sector, subsector</span></div>
+                    <div class="data-ref-row"><span class="data-ref-var">history[ticker]</span> — <span class="data-ref-fields">date, open, high, low, close, volume</span></div>
+                    <div class="data-ref-row"><span class="data-ref-var">date</span> — pd.Timestamp &nbsp;|&nbsp; Available: <span class="data-ref-fields">pd</span>, <span class="data-ref-fields">np</span> (no imports needed)</div>
+                </div>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                <span style="font-size:11px; color:#6e7681; font-family:monospace;">def select(universe_df, history, date) &rarr; list[str]</span>
+                <button class="btn btn-validate btn-sm" onclick="validateCode('code')">&#10003; Validate</button>
+            </div>
+            <textarea class="code-editor" id="manual-code" rows="12"
+                placeholder="def select(universe_df, history, date):
+    tickers = universe_df['ticker'].tolist()
+    scores = []
+    for tk in tickers:
+        df = history.get(tk)
+        if df is None or df.empty:
+            continue
+        df = df[df['date'] <= date].tail(21)
+        if len(df) < 21:
+            continue
+        ret = float(df['close'].iloc[-1] / df['close'].iloc[0] - 1)
+        scores.append((tk, ret))
+    scores.sort(key=lambda x: x[1], reverse=True)
+    return [t for t, _ in scores[:10]]"></textarea>
+            <div id="code-validate-status" class="inline-status"></div>
+        </div>
+
+        <!-- Ticker List -->
+        <div class="bt-pane" id="pane-manual">
+            <div style="font-size:11px; color:#6e7681; margin-bottom:10px;">Equal-weight portfolio held for the full period</div>
+            <div id="ticker-list" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; min-height:28px;"></div>
+            <div style="display:flex; gap:6px; align-items:center;">
+                <input type="text" id="ticker-input"
+                    style="background:#0d1117; border:1px solid #30363d; color:#c9d1d9; padding:5px 10px; border-radius:6px; font-size:13px; width:130px; font-family:monospace; text-transform:uppercase;"
+                    placeholder="e.g. AAPL"
+                    onkeydown="if(event.key==='Enter'){addTicker();event.preventDefault();}">
+                <button class="btn btn-secondary" onclick="addTicker()">+ Add</button>
+            </div>
+        </div>
+
+        <!-- Preview panel (shared across all panes) -->
+        <div id="preview-panel" style="display:none; margin-top:16px; border-top:1px solid #21262d; padding-top:14px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+                <span style="font-size:11px; color:#6e7681; text-transform:uppercase; letter-spacing:.5px;">
+                    Selected Stocks <span id="preview-count" class="badge"></span>
+                </span>
+                <span style="font-size:11px; color:#484f58;" id="preview-meta"></span>
+            </div>
+            <div id="preview-list" style="overflow-x:auto;"></div>
+            <div id="preview-error" style="font-size:12px; color:#f85149; margin-top:6px; display:none;"></div>
+        </div>
+
+    </div><!-- .bt-content -->
+</div><!-- .bt-panel -->
+
+<!-- Preview button row -->
+<div style="margin-bottom:12px;">
+    <button class="btn btn-secondary" onclick="previewSignal()" style="font-size:12px;">
+        &#128269; Preview Selected Stocks
+    </button>
+</div>
+
+<!-- ── Run bar ────────────────────────────────────────────────────────────── -->
+<div class="bt-bottombar">
+    <span class="status-badge" id="run-status">Not run</span>
+    <span style="font-size:11px; color:#6e7681;" id="run-info"></span>
+    <button class="btn-refresh" onclick="runBacktest(true)" title="Force re-run">&#8635;</button>
+    <button class="btn-run" onclick="runBacktest()">&#9654; Run</button>
+</div>
+
+<!-- ── Results (one block, switches with tf) ────────────────────────────── -->
+{% for tf in ['daily', 'weekly', 'monthly', 'yearly'] %}
+<div class="tf-result {{ 'active' if tf == 'daily' }}" id="result-{{ tf }}">
+
+    <div class="metrics-grid">
+        <div class="metric-card"><div class="m-label">Total Return</div><div class="m-value" id="m-totalret-{{ tf }}">—</div></div>
+        <div class="metric-card"><div class="m-label">CAGR</div><div class="m-value" id="m-cagr-{{ tf }}">—</div></div>
+        <div class="metric-card"><div class="m-label">Sharpe</div><div class="m-value" id="m-sharpe-{{ tf }}">—</div></div>
+        <div class="metric-card"><div class="m-label">Max Drawdown</div><div class="m-value" id="m-mdd-{{ tf }}">—</div></div>
+        <div class="metric-card"><div class="m-label">Win Rate</div><div class="m-value" id="m-wr-{{ tf }}">—</div></div>
+        <div class="metric-card"><div class="m-label">Avg Hold (days)</div><div class="m-value" id="m-hold-{{ tf }}">—</div></div>
+        <div class="metric-card"><div class="m-label">Trades</div><div class="m-value" id="m-ntrades-{{ tf }}">—</div></div>
+    </div>
+
+    <div class="chart-wrap" id="chart-wrap-{{ tf }}" style="display:none;">
+        <h3>Equity Curve</h3>
+        <canvas id="chart-{{ tf }}" height="200"></canvas>
+    </div>
+
+    {% if tf == 'yearly' %}
+    <div class="chart-wrap" id="cohort-chart-wrap" style="display:none;">
+        <h3>Annual Returns</h3>
+        <canvas id="chart-cohorts" height="140"></canvas>
+    </div>
+    {% endif %}
+
+    <div class="card" style="margin-top:0;">
+        <h2 style="font-size:12px; color:#6e7681; margin-bottom:10px; text-transform:uppercase; letter-spacing:.5px;">
+            Trades <span id="trades-count-{{ tf }}" class="badge"></span>
+        </h2>
+        <div class="scroll-table" style="max-height:260px;">
+            <table class="trades-table">
+                <thead>
+                    <tr><th>Ticker</th><th>Entry</th><th>Exit</th><th>Entry Px</th><th>Exit Px</th><th>P&amp;L %</th></tr>
+                </thead>
+                <tbody id="trades-body-{{ tf }}">
+                    <tr><td colspan="6" style="text-align:center;color:#6e7681;padding:20px;">Run a backtest to see trades</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+var _market   = '{{ market_codes[0] if market_codes else "US" }}';
+var _sigType  = 'builtin';
+var _activeTf = 'daily';
+var _charts   = {};
+var _cohortChart = null;
+var _selectedBuiltins = [];
+var _tickers  = [];
+
+// Default dates
+(function() {
+    var t = new Date();
+    var y = t.getFullYear(), m = String(t.getMonth()+1).padStart(2,'0'), d = String(t.getDate()).padStart(2,'0');
+    document.getElementById('end-date').value   = y+'-'+m+'-'+d;
+    document.getElementById('start-date').value = (y-3)+'-'+m+'-'+d;
+})();
+
+document.addEventListener('DOMContentLoaded', function() { loadBuiltins(); });
+
+// ── Market ────────────────────────────────────────────────────────────────────
+function selectMarket(code) {
+    _market = code;
+    document.querySelectorAll('.mkt-pill').forEach(function(b) {
+        b.classList.toggle('active', b.dataset.market === code);
+    });
+}
+
+// ── Strategy nav ──────────────────────────────────────────────────────────────
+function selectSig(type) {
+    _sigType = type;
+    document.querySelectorAll('.bt-nav-item').forEach(function(el, i) {
+        var types = ['builtin','nl','code','manual'];
+        el.classList.toggle('active', types[i] === type);
+    });
+    document.querySelectorAll('.bt-pane').forEach(function(p) {
+        p.classList.toggle('active', p.id === 'pane-' + type);
+    });
+}
+
+// ── Timeframe ─────────────────────────────────────────────────────────────────
+function switchTf(tf) {
+    _activeTf = tf;
+    document.querySelectorAll('.tf-pill').forEach(function(t) {
+        t.classList.toggle('active', t.dataset.tf === tf);
+    });
+    document.querySelectorAll('.tf-result').forEach(function(r) {
+        r.classList.toggle('active', r.id === 'result-' + tf);
+    });
+    // Re-render built-in strategies for this timeframe
+    if (Object.keys(_allStrategies).length) renderBuiltinPills(tf);
+    // Hide preview panel on timeframe switch
+    document.getElementById('preview-panel').style.display = 'none';
+}
+
+// ── Built-in pills ────────────────────────────────────────────────────────────
+var _allStrategies = {};  // tf -> [{name, description}]
+
+function loadBuiltins() {
+    fetch('/api/backtest/strategies')
+        .then(function(r){ return r.json(); })
+        .then(function(data) {
+            _allStrategies = data;
+            renderBuiltinPills(_activeTf);
+        });
+}
+
+function renderBuiltinPills(tf) {
+    var container = document.getElementById('builtin-pills');
+    container.innerHTML = '';
+    _selectedBuiltins = [];
+
+    var strategies = (_allStrategies[tf] && _allStrategies[tf].strategies) || [];
+    strategies.forEach(function(s) {
+        var btn = document.createElement('button');
+        btn.className = 'strategy-pill';
+        btn.dataset.name = s.name;
+        btn.textContent = s.description || s.name;
+        btn.onclick = function(){ toggleBuiltin(this); };
+        container.appendChild(btn);
+    });
+
+    // Select first by default
+    var first = container.querySelector('.strategy-pill');
+    if (first) toggleBuiltin(first);
+}
+
+function toggleBuiltin(btn) {
+    var name = btn.dataset.name;
+    var idx  = _selectedBuiltins.indexOf(name);
+    if (idx === -1) { _selectedBuiltins.push(name); btn.classList.add('active'); }
+    else            { _selectedBuiltins.splice(idx, 1); btn.classList.remove('active'); }
+}
+
+// ── Data ref toggle ───────────────────────────────────────────────────────────
+function toggleRef(id) {
+    var body = document.getElementById(id);
+    var arrow = document.getElementById(id + '-arrow');
+    var open = body.classList.toggle('open');
+    if (arrow) arrow.innerHTML = open ? '&#9650;' : '&#9660;';
+}
+
+// ── Generate / Validate ───────────────────────────────────────────────────────
+function generateCode() {
+    var desc = document.getElementById('nl-description').value.trim();
+    if (!desc) { showStatus('nl-status', 'err', 'Please enter a description.'); return; }
+    showStatus('nl-status', 'info', 'Generating...');
+    document.getElementById('nl-code-wrap').style.display = 'none';
+    fetch('/api/backtest/generate-signal', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({description: desc})
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+        if (!data.success) { showStatus('nl-status', 'err', data.error || 'Error'); return; }
+        showStatus('nl-status', 'ok', data.explanation || 'Code generated.');
+        document.getElementById('nl-code').value = data.code;
+        document.getElementById('nl-code-wrap').style.display = 'block';
+    })
+    .catch(function(e){ showStatus('nl-status', 'err', e.message); });
+}
+
+function validateCode(src) {
+    var code = src === 'nl' ? document.getElementById('nl-code').value : document.getElementById('manual-code').value;
+    var sid  = src === 'nl' ? 'nl-validate-status' : 'code-validate-status';
+    if (!code.trim()) { showStatus(sid, 'err', 'No code to validate.'); return; }
+    showStatus(sid, 'info', 'Validating...');
+    fetch('/api/backtest/validate-signal', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({code: code, market: _market})
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+        if (!data.valid) { showStatus(sid, 'err', data.error || 'Invalid'); return; }
+        var t = (data.tickers||[]).slice(0,5).join(', ');
+        showStatus(sid, 'ok', '\u2713 Works' + (t ? ' \u2014 ' + t + (data.tickers.length>5?', ...':'') : ''));
+    })
+    .catch(function(e){ showStatus(sid, 'err', e.message); });
+}
+
+function showStatus(id, type, msg) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = msg; el.className = 'inline-status ' + type; el.style.display = 'block';
+}
+
+// ── Ticker tags ───────────────────────────────────────────────────────────────
+function addTicker() {
+    var input = document.getElementById('ticker-input');
+    var val = input.value.trim().toUpperCase();
+    if (!val || _tickers.indexOf(val) !== -1) { input.value = ''; return; }
+    _tickers.push(val);
+    renderTickerList();
+    input.value = ''; input.focus();
+}
+
+function removeTicker(t) {
+    _tickers = _tickers.filter(function(x){ return x !== t; });
+    renderTickerList();
+}
+
+function renderTickerList() {
+    var c = document.getElementById('ticker-list');
+    c.innerHTML = '';
+    _tickers.forEach(function(t) {
+        var tag = document.createElement('span');
+        tag.className = 'ticker-tag';
+        tag.innerHTML = t + '<button onclick="removeTicker(\'' + t + '\')">&#x2715;</button>';
+        c.appendChild(tag);
+    });
+}
+
+// ── Preview signal ────────────────────────────────────────────────────────────
+function previewSignal() {
+    var payload = buildSignalPayload();
+    if (!payload) return;
+
+    var panel = document.getElementById('preview-panel');
+    var list  = document.getElementById('preview-list');
+    var err   = document.getElementById('preview-error');
+    var count = document.getElementById('preview-count');
+    var meta  = document.getElementById('preview-meta');
+
+    panel.style.display = 'block';
+    list.innerHTML = '<span style="color:#6e7681;font-size:12px;">Loading...</span>';
+    err.style.display = 'none';
+    count.textContent = '';
+    meta.textContent = '';
+
+    fetch('/api/backtest/preview', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            market:          _market,
+            universe_source: payload.universe_source,
+            signal:          payload.signal,
+        })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+        if (data.error) {
+            list.innerHTML = '';
+            err.textContent = data.error; err.style.display = 'block'; return;
+        }
+        count.textContent = data.count;
+        meta.textContent = 'based on latest available data';
+        if (!data.tickers || !data.tickers.length) {
+            list.innerHTML = '<span style="color:#6e7681;font-size:12px;">No stocks selected by this signal</span>';
+            return;
+        }
+        // Determine if multi-strategy (show Signals column when any stock has signal_count > 1)
+        var hasMulti = data.tickers.some(function(t){ return (t.signal_count||1) > 1; });
+        var showStrategies = data.tickers.some(function(t){ return t.strategies && t.strategies.length; });
+        var html = '<table class="preview-table"><thead><tr>'
+            + '<th>Ticker</th><th>Name</th><th>Sector</th>'
+            + (showStrategies ? '<th>Strategy</th>' : '')
+            + (hasMulti ? '<th>Signals</th>' : '')
+            + '</tr></thead><tbody>';
+        data.tickers.forEach(function(t) {
+            var multi = (t.signal_count||1) > 1;
+            var dots = '';
+            if (hasMulti) {
+                for (var i=0; i<(t.signal_count||1); i++) dots += '●';
+            }
+            var stratLabel = (t.strategies||[]).join(', ');
+            html += '<tr class="' + (multi ? 'multi-signal' : '') + '">'
+                + '<td><span class="pt-ticker">' + esc(t.ticker) + '</span></td>'
+                + '<td><span class="pt-name">' + esc(t.name||'') + '</span></td>'
+                + '<td><span class="pt-sector">' + esc(t.sector||'') + '</span></td>'
+                + (showStrategies ? '<td><span class="pt-strategy">' + esc(stratLabel) + '</span></td>' : '')
+                + (hasMulti ? '<td><span class="pt-signals" title="' + t.signal_count + ' strategies">' + dots + '</span></td>' : '')
+                + '</tr>';
+        });
+        html += '</tbody></table>';
+        list.innerHTML = html;
+    })
+    .catch(function(e) {
+        list.innerHTML = '';
+        err.textContent = 'Request failed: ' + e.message; err.style.display = 'block';
+    });
+}
+
+// Extract just the signal/universe from current state (shared by preview + run)
+function buildSignalPayload() {
+    var universeSource, signal;
+    if (_sigType === 'builtin') {
+        if (!_selectedBuiltins.length) { alert('Select at least one strategy.'); return null; }
+        universeSource = {type: 'market'};
+        signal = {type: 'builtin', name: _selectedBuiltins.length === 1 ? _selectedBuiltins[0] : _selectedBuiltins};
+    } else if (_sigType === 'nl') {
+        var code = document.getElementById('nl-code').value.trim();
+        if (!code) { alert('Please generate the code first.'); return null; }
+        universeSource = {type: 'market'};
+        signal = {type: 'code', code: code};
+    } else if (_sigType === 'code') {
+        var code = document.getElementById('manual-code').value.trim();
+        if (!code) { alert('Please write a select() function first.'); return null; }
+        universeSource = {type: 'market'};
+        signal = {type: 'code', code: code};
+    } else {
+        if (!_tickers.length) { alert('Add at least one ticker.'); return null; }
+        universeSource = {type: 'custom', tickers: _tickers};
+        signal = {type: 'builtin', name: 'yearly_momentum_252d'};
+    }
+    return {universe_source: universeSource, signal: signal};
+}
+
+// ── Build payload ─────────────────────────────────────────────────────────────
+function buildPayload(force) {
+    var sp = buildSignalPayload();
+    if (!sp) return null;
+    return {
+        market:          _market,
+        timeframe:       _activeTf,
+        universe_source: sp.universe_source,
+        signal:          sp.signal,
+        start_date:      document.getElementById('start-date').value || '2022-01-01',
+        end_date:        document.getElementById('end-date').value   || '2024-12-31',
+        force:           !!force,
+    };
+}
+
+// ── Run ───────────────────────────────────────────────────────────────────────
+function runBacktest(force) {
+    var payload = buildPayload(force);
+    if (!payload) return;
+    setStatus('running', 'Running...');
+    clearResults(_activeTf);
+    fetch('/api/backtest/run', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+        if (data.error) { setStatus('error', data.error); return; }
+        renderResult(_activeTf, data);
+        var dt = data.generated_at ? new Date(data.generated_at).toLocaleString() : '';
+        document.getElementById('run-info').textContent = dt + (data.duration_s ? ' ('+data.duration_s+'s)' : '');
+        setStatus('done', 'Done');
+    })
+    .catch(function(e){ setStatus('error', e.message); });
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function renderResult(tf, data) {
+    var m = data.metrics || {};
+    function pct(v)  { return v==null||isNaN(v) ? '\u2014' : (v*100).toFixed(2)+'%'; }
+    function fmt2(v) { return v==null||isNaN(v) ? '\u2014' : v.toFixed(2); }
+    function setM(id, val, cls) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = val;
+        el.className = 'm-value' + (cls ? ' '+cls : '');
+    }
+    setM('m-totalret-'+tf, pct(m.total_return), m.total_return>0?'up':m.total_return<0?'down':'');
+    setM('m-cagr-'+tf,     pct(m.cagr),         m.cagr>0?'up':m.cagr<0?'down':'');
+    setM('m-sharpe-'+tf,   fmt2(m.sharpe),       m.sharpe>1?'up':m.sharpe<0?'down':'');
+    setM('m-mdd-'+tf,      pct(m.max_drawdown),  'down');
+    setM('m-wr-'+tf,       pct(m.win_rate),      '');
+    setM('m-hold-'+tf,     m.avg_hold_days!=null ? m.avg_hold_days.toFixed(1) : '\u2014', '');
+    setM('m-ntrades-'+tf,  m.num_trades!=null ? m.num_trades : '\u2014', '');
+
+    if (data.equity_curve && data.equity_curve.length > 1) {
+        document.getElementById('chart-wrap-'+tf).style.display = 'block';
+        renderEquityChart(tf, data.equity_curve);
+    }
+    if (tf === 'yearly' && data.cohorts && data.cohorts.length) {
+        document.getElementById('cohort-chart-wrap').style.display = 'block';
+        renderCohortChart(data.cohorts);
+    }
+    renderTrades(tf, data.trades || []);
+}
+
+function renderEquityChart(tf, curve) {
+    var labels = curve.map(function(p){ return p[0]; });
+    var values = curve.map(function(p){ return p[1]; });
+    var ctx = document.getElementById('chart-'+tf).getContext('2d');
+    if (_charts[tf]) _charts[tf].destroy();
+    var sv = values[0]||1, lineColor = values[values.length-1]>=sv?'#3fb950':'#f85149';
+    _charts[tf] = new Chart(ctx, {
+        type: 'line',
+        data: { labels: labels, datasets: [{ data: values, borderColor: lineColor, borderWidth: 1.5, pointRadius: 0, fill: {target:'origin', above: lineColor+'22'}, tension: 0.1 }] },
+        options: { responsive:true, maintainAspectRatio:true, animation:false,
+            plugins: { legend:{display:false}, tooltip:{ mode:'index', intersect:false, callbacks:{ label:function(c){ var v=c.parsed.y,p=((v/sv-1)*100).toFixed(2); return 'Value: '+v.toFixed(0)+'  ('+(p>=0?'+':'')+p+'%)'; }}}},
+            scales: {
+                x: { ticks:{color:'#6e7681',maxTicksLimit:8,font:{size:11}}, grid:{color:'#21262d'} },
+                y: { ticks:{color:'#6e7681',font:{size:11}, callback:function(v){ return (v/sv*100-100).toFixed(0)+'%'; }}, grid:{color:'#21262d'} }
+            }
+        }
+    });
+}
+
+function renderCohortChart(cohorts) {
+    var ctx = document.getElementById('chart-cohorts').getContext('2d');
+    if (_cohortChart) _cohortChart.destroy();
+    var labels = cohorts.map(function(c){ return String(c.year); });
+    var values = cohorts.map(function(c){ return c.return*100; });
+    var colors = values.map(function(v){ return v>=0?'#3fb950':'#f85149'; });
+    _cohortChart = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: labels, datasets: [{ data: values, backgroundColor: colors, borderRadius: 3 }] },
+        options: { responsive:true, maintainAspectRatio:true, animation:false,
+            plugins: { legend:{display:false}, tooltip:{ callbacks:{ label:function(c){ var v=c.parsed.y; return 'Return: '+(v>=0?'+':'')+v.toFixed(2)+'%'; }}}},
+            scales: {
+                x: { ticks:{color:'#6e7681',font:{size:11}}, grid:{color:'#21262d'} },
+                y: { ticks:{color:'#6e7681',font:{size:11}, callback:function(v){ return v.toFixed(0)+'%'; }}, grid:{color:'#21262d'} }
+            }
+        }
+    });
+}
+
+function renderTrades(tf, trades) {
+    var tbody = document.getElementById('trades-body-'+tf);
+    var count = document.getElementById('trades-count-'+tf);
+    if (count) count.textContent = trades.length;
+    if (!trades.length) { tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:#6e7681;padding:16px;">No trades recorded</td></tr>'; return; }
+    var html = '';
+    trades.slice().reverse().slice(0,100).forEach(function(t) {
+        var p=(t.pnl_pct*100).toFixed(2), cls=t.pnl_pct>=0?'pnl-pos':'pnl-neg';
+        html+='<tr><td>'+t.ticker+'</td><td>'+(t.entry_date||'')+'</td><td>'+(t.exit_date||'')+'</td>'
+             +'<td>'+(t.entry_price!=null?t.entry_price.toFixed(4):'\u2014')+'</td>'
+             +'<td>'+(t.exit_price !=null?t.exit_price.toFixed(4) :'\u2014')+'</td>'
+             +'<td class="'+cls+'">'+(t.pnl_pct>=0?'+':'')+p+'%</td></tr>';
+    });
+    tbody.innerHTML = html;
+}
+
+function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function setStatus(state, text) {
+    var el = document.getElementById('run-status');
+    el.textContent = text;
+    el.className = 'status-badge'+(state==='running'?' running':state==='done'?' done':state==='error'?' error':'');
+}
+
+function clearResults(tf) {
+    ['totalret','cagr','sharpe','mdd','wr','hold','ntrades'].forEach(function(k) {
+        var el = document.getElementById('m-'+k+'-'+tf);
+        if (el) { el.textContent='\u2014'; el.className='m-value'; }
+    });
+    document.getElementById('trades-body-'+tf).innerHTML = '<tr><td colspan="6" style="text-align:center;color:#6e7681;padding:20px;">Run a backtest to see trades</td></tr>';
+    var cnt = document.getElementById('trades-count-'+tf); if (cnt) cnt.textContent='';
+    if (_charts[tf]) { _charts[tf].destroy(); _charts[tf]=null; }
+    var cw = document.getElementById('chart-wrap-'+tf); if (cw) cw.style.display='none';
+    if (tf==='yearly') {
+        if (_cohortChart) { _cohortChart.destroy(); _cohortChart=null; }
+        var cc = document.getElementById('cohort-chart-wrap'); if (cc) cc.style.display='none';
+    }
+}
+</script>
+
+{% endblock %}

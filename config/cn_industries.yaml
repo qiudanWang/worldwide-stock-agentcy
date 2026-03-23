@@ -1,0 +1,32 @@
+industries:
+  # Software & IT
+  - 软件开发
+  - IT服务Ⅲ
+  - 互联网服务
+  - 游戏
+  # Semiconductor & Electronics
+  - 半导体
+  - 消费电子
+  - 光学光电子
+  - 电子化学品
+  # Hardware & Telecom Equipment
+  - 通信设备
+  - 计算机设备
+  # New Energy Tech (EV, battery tech)
+  - 电池
+  - 储能
+  - 光伏设备
+  # Automation & AI
+  - 自动化设备
+  - 人工智能
+  - 云计算
+  - 大数据
+  - 网络安全
+  # Pharma / Healthcare
+  - 医疗器械
+  - 医药商业
+  - 医疗服务
+  # Finance
+  - 银行
+  - 证券
+  - 保险

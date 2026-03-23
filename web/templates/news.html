@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}News — Global Market Monitor{% endblock %}
+{% block content %}
+
+<div class="grid">
+    <!-- Geopolitical -->
+    <div class="card">
+        <h2>Geopolitical</h2>
+        <div class="scroll-table" style="max-height: 500px;">
+        {% if geo and geo.get('news') %}
+            <div style="padding: 6px 0; color: #8b949e; font-size: 12px; margin-bottom: 8px;">
+                {{ geo.total_items }} total | {{ geo.relevant_items }} tech-relevant | {{ geo.feed_count }} feeds
+            </div>
+            {% for n in geo.news %}
+            <div style="padding: 8px 0; border-bottom: 1px solid #21262d;">
+                <span class="tag" style="background: #21262d; color: #8b949e; border: 1px solid #30363d;">{{ n.source }}</span>
+                <a href="{{ n.link }}" target="_blank" style="color: #58a6ff; text-decoration: none;">
+                    {{ n.title }}
+                </a>
+                {% if n.pub_date %}
+                <br><span class="flat" style="font-size: 11px;">{{ n.pub_date }}</span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty">No geopolitical news available.</div>
+        {% endif %}
+        </div>
+    </div>
+
+    <!-- Company News -->
+    <div class="card">
+        <h2>Company News</h2>
+        {% if news %}
+        <div style="display:flex; gap:4px; flex-wrap:wrap; margin-bottom:10px;" id="news-tabs">
+            <button onclick="filterNewsPage('All')" id="ntab-All" class="market-tab active" style="cursor:pointer; border:none;">All</button>
+            {% for mkt in market_codes %}
+            <button onclick="filterNewsPage('{{ mkt }}')"
+                    id="ntab-{{ mkt }}"
+                    class="market-tab"
+                    style="cursor:pointer; border:none;">{{ mkt }}</button>
+            {% endfor %}
+        </div>
+        <div class="scroll-table" style="max-height: 500px;">
+        <table>
+            <tr>
+                <th>Mkt</th>
+                <th>Ticker</th>
+                <th>Title</th>
+                <th>Source</th>
+                <th>Hits</th>
+            </tr>
+            {% for r in news %}
+            <tr class="news-row-page" data-market="{{ r.get('market', '') }}">
+                <td class="flat">{{ r.get('market', '') }}</td>
+                <td>
+                    <a href="/companies/{{ r.ticker }}" style="color:#58a6ff; text-decoration:none; font-weight:600;">{{ r.ticker }}</a>
+                    {% if r.get('company_name') %}<br><span style="color:#8b949e; font-size:10px;">{{ r.company_name }}</span>{% endif %}
+                </td>
+                <td>
+                    <a href="{{ r.get('link', '#') }}" target="_blank" style="color: #c9d1d9; text-decoration: none;"
+                       onmouseover="this.style.color='#58a6ff'" onmouseout="this.style.color='#c9d1d9'">
+                        {{ r.title[:70] }}{% if r.title|length > 70 %}...{% endif %}
+                    </a>
+                </td>
+                <td class="flat">{{ r.get('publisher', r.get('source', '')) }}</td>
+                <td>{{ r.get('hit_count', 0) }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        </div>
+        {% else %}
+            <div class="empty">No company news available.</div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function filterNewsPage(market) {
+    document.querySelectorAll('.news-row-page').forEach(function(row) {
+        row.style.display = (market === 'All' || row.dataset.market === market) ? '' : 'none';
+    });
+    document.querySelectorAll('#news-tabs .market-tab').forEach(function(btn) {
+        btn.classList.remove('active');
+    });
+    document.getElementById('ntab-' + market).classList.add('active');
+    document.getElementById('news-title').textContent = market === 'All' ? 'News' : market + ' News';
+}
+</script>
+{% endblock %}

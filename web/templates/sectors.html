@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}{{ t('sectors.title') }} — {{ t('nav.brand') }}{% endblock %}
+{% block content %}
+
+<!-- Market Tabs -->
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+    <button class="market-tab active" data-market="ALL" onclick="setMarketTab(this,'ALL')">All</button>
+    {% for mc in market_codes %}
+    <button class="market-tab" data-market="{{ mc }}" onclick="setMarketTab(this,'{{ mc }}')">{{ mc }}</button>
+    {% endfor %}
+</div>
+
+{% if sector_perf %}
+<!-- Sector Performance Table -->
+<div class="card" style="margin-bottom: 16px;">
+    <h2>{{ t('sectors.performance') }}</h2>
+    <div class="scroll-table" style="max-height: 600px;">
+    <table id="sector-table">
+        <tr>
+            <th>{{ t('cols.market') }}</th>
+            <th>{{ t('cols.sector') }}</th>
+            <th>{{ t('cols.stocks') }}</th>
+            <th>{{ t('cols.avg_1d') }}</th>
+            <th>{{ t('cols.avg_5d') }}</th>
+            <th>{{ t('cols.avg_20d') }}</th>
+            <th>{{ t('cols.top_ticker') }}</th>
+            <th>{{ t('cols.bottom_ticker') }}</th>
+        </tr>
+        {% for s in sector_perf %}
+        <tr data-market="{{ s.market }}">
+            <td class="flat">{{ s.market }}</td>
+            <td>{{ s.sector }}</td>
+            <td class="flat">{{ s.stock_count }}</td>
+            <td class="{{ 'up' if s.avg_return_1d and s.avg_return_1d > 0 else 'down' if s.avg_return_1d and s.avg_return_1d < 0 else 'flat' }}">
+                {% if s.avg_return_1d is not none %}{{ "%.2f"|format(s.avg_return_1d * 100) }}%{% else %}-{% endif %}
+            </td>
+            <td class="{{ 'up' if s.avg_return_5d and s.avg_return_5d > 0 else 'down' if s.avg_return_5d and s.avg_return_5d < 0 else 'flat' }}">
+                {% if s.avg_return_5d is not none %}{{ "%.2f"|format(s.avg_return_5d * 100) }}%{% else %}-{% endif %}
+            </td>
+            <td class="{{ 'up' if s.avg_return_20d and s.avg_return_20d > 0 else 'down' if s.avg_return_20d and s.avg_return_20d < 0 else 'flat' }}">
+                {% if s.avg_return_20d is not none %}{{ "%.2f"|format(s.avg_return_20d * 100) }}%{% else %}-{% endif %}
+            </td>
+            <td class="up" style="font-size: 11px;">
+                {% if s.get('top_ticker') %}{{ s.top_ticker }} ({{ "%.1f"|format(s.get('top_return_1d', 0) * 100) }}%){% else %}-{% endif %}
+            </td>
+            <td class="down" style="font-size: 11px;">
+                {% if s.get('bottom_ticker') %}{{ s.bottom_ticker }} ({{ "%.1f"|format(s.get('bottom_return_1d', 0) * 100) }}%){% else %}-{% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+    </div>
+</div>
+
+{% else %}
+<div class="card">
+    <div class="empty">{{ t('sectors.no_data') }}</div>
+</div>
+{% endif %}
+
+<script>
+function setMarketTab(btn, market) {
+    document.querySelectorAll('.market-tab').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    document.querySelectorAll('#sector-table tr[data-market]').forEach(function(row) {
+        row.style.display = (market === 'ALL' || row.dataset.market === market) ? '' : 'none';
+    });
+}
+</script>
+<style>
+.market-tab {
+    background: #161b22; border: 1px solid #30363d; color: #8b949e;
+    border-radius: 6px; padding: 4px 12px; font-size: 12px; cursor: pointer;
+}
+.market-tab:hover { border-color: #58a6ff; color: #c9d1d9; }
+.market-tab.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+</style>
+
+<!-- Correlation Matrix -->
+{% if correlations and correlations.get('matrix') %}
+<div class="card" style="margin-bottom: 16px;">
+    <h2>{{ t('sectors.correlation') }}</h2>
+    <div style="overflow-x: auto;">
+    <table>
+        <tr>
+            <th></th>
+            {% for col in correlations.matrix.keys() %}
+            <th style="font-size: 10px;">{{ col }}</th>
+            {% endfor %}
+        </tr>
+        {% for row_name, row_data in correlations.matrix.items() %}
+        <tr>
+            <td style="font-size: 11px;"><strong>{{ row_name }}</strong></td>
+            {% for col_name, val in row_data.items() %}
+            <td style="text-align: center; font-size: 11px;
+                {% if val and val > 0.5 %}color: #3fb950;{% elif val and val < -0.5 %}color: #f85149;{% endif %}">
+                {{ "%.2f"|format(val) if val is not none else '-' }}
+            </td>
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </table>
+    </div>
+</div>
+
+{% if correlations.get('lead_lag') %}
+<div class="card">
+    <h2>{{ t('sectors.lead_lag') }}</h2>
+    <table>
+        <tr>
+            <th>{{ t('cols.leader') }}</th>
+            <th>{{ t('cols.follower') }}</th>
+            <th>{{ t('cols.correlation') }}</th>
+            <th>{{ t('cols.direction') }}</th>
+        </tr>
+        {% for ll in correlations.lead_lag %}
+        <tr>
+            <td><strong>{{ ll.leader }}</strong></td>
+            <td>{{ ll.follower }}</td>
+            <td>{{ "%.3f"|format(ll.correlation) }}</td>
+            <td class="{{ 'up' if ll.direction == 'positive' else 'down' }}">{{ ll.direction }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Companies — Global Market Monitor{% endblock %}
+{% block content %}
+<div class="header-row">
+    <h1>Companies</h1>
+    <span class="meta">
+        {% set total = 0 %}
+        {% for m, cs in companies_by_market.items() %}{% set total = total + cs|length %}{% endfor %}
+        {{ total }} stocks / {{ companies_by_market|length }} markets
+    </span>
+</div>
+
+<!-- Market Tabs for filtering -->
+<div class="market-tabs" id="company-tabs">
+    <a href="#" class="market-tab active" onclick="filterMarket('all'); return false;">{{ t('common.all') }}</a>
+    {% for code in market_codes %}
+    {% if code in companies_by_market %}
+    <a href="#" class="market-tab" onclick="filterMarket('{{ code }}'); return false;">
+        {{ code }} <span class="badge">{{ companies_by_market[code]|length }}</span>
+    </a>
+    {% endif %}
+    {% endfor %}
+</div>
+
+{% for market_code, companies in companies_by_market.items() %}
+<div class="card market-section" data-market="{{ market_code }}" style="margin-bottom: 16px;">
+    <h2>{{ market_code }} — {{ markets_cfg.get(market_code, {}).get('name', market_code) }} <span class="badge">{{ companies|length }}</span></h2>
+    <div class="scroll-table" style="max-height: 500px;">
+    {% if companies %}
+    <table>
+        <tr>
+            <th>{{ t('cols.ticker') }}</th>
+            <th>{{ t('cols.name') }}</th>
+            <th>{{ t('cols.exchange') }}</th>
+            <th>{{ t('cols.sector') }}</th>
+            <th>{{ t('cols.price') }}</th>
+            <th>{{ t('cols.mkt_cap') }}</th>
+            <th>{{ t('cols.vol_ratio') }}</th>
+            <th>{{ t('cols.return_1d') }}</th>
+        </tr>
+        {% for c in companies %}
+        <tr id="{{ c.ticker }}">
+            <td><a href="/companies/{{ c.ticker }}" style="color: #58a6ff; text-decoration: none;"><strong>{{ c.ticker }}</strong></a></td>
+            <td><a href="/companies/{{ c.ticker }}" style="color: #c9d1d9; text-decoration: none;">{{ c.name }}</a></td>
+            <td class="flat" style="font-size: 11px;">{{ c.board }}</td>
+            <td class="flat" style="font-size: 11px;">
+                {% if c.sub_sector %}
+                    {% for s in c.sub_sector[:2] %}
+                    <span class="tag" style="background: #0d1d30; color: #58a6ff; border: 1px solid #58a6ff; margin: 1px;">{{ s }}</span>
+                    {% endfor %}
+                {% else %}
+                    {{ c.sector }}
+                {% endif %}
+            </td>
+            <td>{% if c.close %}{{ "%.2f"|format(c.close) }}{% else %}-{% endif %}</td>
+            <td>{{ format_market_cap(c.market_cap, market_code) }}</td>
+            <td>{% if c.volume_ratio and c.volume_ratio == c.volume_ratio %}{{ "%.1f"|format(c.volume_ratio) }}x{% else %}-{% endif %}</td>
+            <td class="{{ 'up' if c.return_1d and c.return_1d > 0 else 'down' if c.return_1d and c.return_1d < 0 else 'flat' }}">
+                {% if c.return_1d is not none and c.return_1d == c.return_1d %}{{ "%.2f"|format(c.return_1d * 100) }}%{% else %}-{% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+        <div class="empty">{{ t('companies.no_stocks') }}</div>
+    {% endif %}
+    </div>
+</div>
+{% endfor %}
+
+<script>
+function filterMarket(market) {
+    document.querySelectorAll('.market-section').forEach(el => {
+        el.style.display = (market === 'all' || el.dataset.market === market) ? 'block' : 'none';
+    });
+    document.querySelectorAll('#company-tabs .market-tab').forEach(el => {
+        el.classList.remove('active');
+    });
+    event.target.classList.add('active');
+    document.querySelector('.header-row h1').textContent = market === 'all' ? 'Companies' : market + ' Companies';
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    var hash = window.location.hash;
+    if (!hash) return;
+    var el = document.querySelector(hash);
+    if (el) {
+        el.style.background = '#1f2937';
+        var container = el.closest('.scroll-table');
+        if (container) container.scrollTop = el.offsetTop - container.offsetTop - 40;
+        el.scrollIntoView({block: 'center'});
+    }
+});
+</script>
+{% endblock %}

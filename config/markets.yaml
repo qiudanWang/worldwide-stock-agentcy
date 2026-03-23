@@ -1,0 +1,222 @@
+# Global Tech Market — Market Definitions
+# Each market entry defines: source, ticker suffix, currency, timezone, indices, and data source details.
+# Adding a new market = adding a YAML entry here + a watchlist file in config/
+
+markets:
+  CN:
+    name: China A-shares
+    source: akshare
+    ticker_suffix: ""
+    currency: CNY
+    timezone: Asia/Shanghai
+    indices:
+      - symbol: "000001.SS"
+        name: Shanghai Composite
+      - symbol: "399001.SZ"
+        name: Shenzhen Component
+      - symbol: "399006.SZ"
+        name: ChiNext
+    universe_source: akshare_industry
+    universe_config: cn_industries.yaml
+    news_source: akshare
+    capital_flow_source: akshare_northbound
+    market_cap_source: akshare
+
+  US:
+    name: United States
+    source: yfinance
+    ticker_suffix: ""
+    currency: USD
+    timezone: America/New_York
+    indices:
+      - symbol: "^GSPC"
+        name: S&P 500
+      - symbol: "^IXIC"
+        name: NASDAQ
+      - symbol: "^DJI"
+        name: Dow Jones
+      - symbol: "^SOX"
+        name: Philadelphia Semiconductor
+    universe_source: nasdaq_api
+    universe_config: us_watchlist.yaml  # fallback if API unavailable
+    news_source: yfinance
+    capital_flow_source: null
+    market_cap_source: yfinance
+
+  HK:
+    name: Hong Kong
+    source: yfinance
+    ticker_suffix: ".HK"
+    currency: HKD
+    timezone: Asia/Hong_Kong
+    indices:
+      - symbol: "^HSI"
+        name: Hang Seng Index
+      - symbol: "HSTECH.HK"
+        name: Hang Seng TECH
+    universe_source: hkex_api
+    universe_config: hk_watchlist.yaml  # fallback if API unavailable
+    news_source: yfinance
+    capital_flow_source: akshare_southbound
+    market_cap_source: yfinance
+
+  JP:
+    name: Japan
+    source: yfinance
+    ticker_suffix: ".T"
+    currency: JPY
+    timezone: Asia/Tokyo
+    indices:
+      - symbol: "^N225"
+        name: Nikkei 225
+      - symbol: "1306.T"
+        name: TOPIX ETF
+    universe_source: jpx_api
+    universe_config: jp_watchlist.yaml  # fallback if API unavailable
+    news_source: yfinance
+    capital_flow_source: etf_proxy
+    capital_flow_etf: EWJ
+    market_cap_source: yfinance
+
+  IN:
+    name: India
+    source: yfinance
+    ticker_suffix: ".NS"
+    currency: INR
+    timezone: Asia/Kolkata
+    indices:
+      - symbol: "^NSEI"
+        name: NIFTY 50
+      - symbol: "^BSESN"
+        name: BSE SENSEX
+    universe_source: nse_api
+    universe_config: in_watchlist.yaml  # fallback if API unavailable
+    news_source: yfinance
+    capital_flow_source: etf_proxy
+    capital_flow_etf: INDA
+    market_cap_source: yfinance
+
+  UK:
+    name: United Kingdom
+    source: yfinance
+    ticker_suffix: ".L"
+    currency: GBP
+    timezone: Europe/London
+    indices:
+      - symbol: "^FTSE"
+        name: FTSE 100
+    universe_source: lse_api
+    universe_config: uk_watchlist.yaml  # fallback if API unavailable
+    news_source: yfinance
+    capital_flow_source: etf_proxy
+    capital_flow_etf: EWU
+    market_cap_source: yfinance
+
+  DE:
+    name: Germany
+    source: yfinance
+    ticker_suffix: ".DE"
+    currency: EUR
+    timezone: Europe/Berlin
+    indices:
+      - symbol: "^GDAXI"
+        name: DAX
+    universe_source: xetra_api
+    universe_config: de_watchlist.yaml  # fallback if API unavailable
+    news_source: yfinance
+    capital_flow_source: etf_proxy
+    capital_flow_etf: EWG
+    market_cap_source: yfinance
+
+  FR:
+    name: France
+    source: yfinance
+    ticker_suffix: ".PA"
+    currency: EUR
+    timezone: Europe/Paris
+    indices:
+      - symbol: "^FCHI"
+        name: CAC 40
+    universe_source: euronext_api
+    universe_config: fr_watchlist.yaml  # fallback if API unavailable
+    news_source: yfinance
+    capital_flow_source: null
+    market_cap_source: yfinance
+
+  KR:
+    name: South Korea
+    source: yfinance
+    ticker_suffix: ".KS"
+    currency: KRW
+    timezone: Asia/Seoul
+    indices:
+      - symbol: "^KS11"
+        name: KOSPI
+    universe_source: krx_api
+    universe_config: kr_watchlist.yaml  # fallback if API unavailable
+    news_source: yfinance
+    capital_flow_source: etf_proxy
+    capital_flow_etf: EWY
+    market_cap_source: yfinance
+
+  TW:
+    name: Taiwan
+    source: yfinance
+    ticker_suffix: ".TW"
+    currency: TWD
+    timezone: Asia/Taipei
+    indices:
+      - symbol: "^TWII"
+        name: TAIEX
+    universe_source: twse_api
+    universe_config: tw_watchlist.yaml  # fallback if API unavailable
+    news_source: yfinance
+    capital_flow_source: etf_proxy
+    capital_flow_etf: EWT
+    market_cap_source: yfinance
+
+  AU:
+    name: Australia
+    source: yfinance
+    ticker_suffix: ".AX"
+    currency: AUD
+    timezone: Australia/Sydney
+    indices:
+      - symbol: "^AXJO"
+        name: ASX 200
+    universe_source: asx_api
+    universe_config: au_watchlist.yaml  # fallback if API unavailable
+    news_source: yfinance
+    capital_flow_source: null
+    market_cap_source: yfinance
+
+  BR:
+    name: Brazil
+    source: yfinance
+    ticker_suffix: ".SA"
+    currency: BRL
+    timezone: America/Sao_Paulo
+    indices:
+      - symbol: "^BVSP"
+        name: Bovespa
+    universe_source: b3_api
+    universe_config: br_watchlist.yaml  # fallback if API unavailable
+    news_source: yfinance
+    capital_flow_source: etf_proxy
+    capital_flow_etf: EWZ
+    market_cap_source: yfinance
+
+  SA:
+    name: Saudi Arabia
+    source: yfinance
+    ticker_suffix: ".SR"
+    currency: SAR
+    timezone: Asia/Riyadh
+    indices:
+      - symbol: "^TASI.SR"
+        name: Tadawul All Share
+    universe_source: tadawul_api
+    universe_config: sa_watchlist.yaml  # fallback if API unavailable
+    news_source: yfinance
+    capital_flow_source: null
+    market_cap_source: yfinance

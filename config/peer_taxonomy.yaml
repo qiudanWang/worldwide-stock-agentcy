@@ -1,0 +1,53 @@
+sub_sector:
+  - AI_application
+  - AI_infrastructure
+  - semiconductor_design
+  - semiconductor_manufacturing
+  - cloud_platform
+  - enterprise_software
+  - cybersecurity
+  - EDA
+  - fintech_infrastructure
+  - HPC_server
+  - networking
+  - autonomous_driving
+  - robotics
+  - office_software
+  - display_technology
+  - battery_technology
+  - EV_technology
+  - e_commerce
+  - gaming
+  - social_media
+  - food_delivery
+  - ride_hailing
+  - search_engine
+  - memory_chips
+  - foundry
+  - OSAT
+  - passive_components
+  - optical_components
+  - IT_services
+  - telecom_equipment
+  - industrial_automation
+  - consumer_electronics
+  - content_platform
+  - IP_licensing
+
+customer_type:
+  - enterprise
+  - consumer
+  - government
+  - developer
+  - SMB
+
+revenue_model:
+  - hardware
+  - software_license
+  - SaaS
+  - platform_fee
+  - service
+  - advertising
+  - subscription
+  - commission
+  - licensing

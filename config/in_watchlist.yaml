@@ -1,0 +1,64 @@
+# India stock watchlist — Tech stocks only
+# Tickers use NSE symbols without ".NS" suffix
+
+it_services:
+  - INFY        # Infosys
+  - TCS         # Tata Consultancy Services
+  - WIPRO       # Wipro
+  - HCLTECH     # HCL Technologies
+  - TECHM       # Tech Mahindra
+  - LTIM        # LTIMindtree
+  - MPHASIS     # Mphasis
+  - COFORGE     # Coforge
+  - PERSISTENT  # Persistent Systems
+  - BIRLASOFT   # Birlasoft
+  - CYIENT      # Cyient
+  - ZENSAR      # Zensar Technologies
+  - MASTEK      # Mastek
+  - ECLERX      # eClerx Services
+  - NIIT        # NIIT
+
+engineering_and_rd:
+  - KPITTECH    # KPIT Technologies
+  - LTTS        # L&T Technology Services
+  - TATAELXSI   # Tata Elxsi
+  - SONATA      # Sonata Software
+
+product_and_platform:
+  - ROUTE       # Route Mobile
+  - HAPPSTMNDS  # Happiest Minds
+  - INTELLECT   # Intellect Design Arena
+  - NEWGEN      # Newgen Software
+  - TANLA       # Tanla Platforms
+  - MAPMYINDIA  # CE Info Systems (MapMyIndia)
+  - RATEGAIN    # RateGain Travel
+
+internet_and_digital:
+  - JUSTDIAL    # Just Dial (local search)
+  - NAZARA      # Nazara Technologies (gaming)
+  - DELHIVERY   # Delhivery (logistics tech)
+  - NAUKRI      # Info Edge (job portal)
+
+fintech:
+  - PAYTM       # One97 Communications (Paytm)
+  - POLICYBZR   # PB Fintech (PolicyBazaar)
+
+hardware:
+  - DIXON       # Dixon Technologies
+  - AMBER       # Amber Enterprises
+  - KAYNES      # Kaynes Technology India
+
+healthcare:
+  - APOLLOHOSP  # Apollo Hospitals Enterprise
+  - FORTIS      # Fortis Healthcare
+  - NH          # Narayana Hrudayalaya
+
+telecom:
+  - BHARTIARTL  # Bharti Airtel
+  - TATACOMM    # Tata Communications
+  - IDEA        # Vodafone Idea
+
+ev_and_energy:
+  - TATAMOTORS  # Tata Motors (EV leader)
+  - GREENPANEL  # Greenpanel Industries
+  - BOSCHLTD    # Bosch India

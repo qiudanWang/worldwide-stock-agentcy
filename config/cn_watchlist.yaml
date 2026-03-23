@@ -1,0 +1,69 @@
+# CN A-share watchlist — group names override akshare industry sector tags.
+# Used by global_agent._compute_sector_performance() to re-tag specific tickers.
+# Group name keys must match entries in src/analysis/sector_performance.py _SECTOR_MAP.
+
+cloud_and_ai:
+  # Cloud computing platforms
+  - "688158"   # 优刻得-W  (UCloud — China's largest listed pure-play cloud provider)
+  - "688316"   # 青云科技-U (QingCloud — enterprise cloud platform)
+  - "688227"   # 品高股份   (cloud services for government)
+  - "300846"   # 首都在线   (CDN / cloud hosting)
+  - "300017"   # 网宿科技   (CDN / edge cloud)
+  - "002368"   # 太极股份   (government cloud & digital transformation)
+  - "600602"   # 云赛智联   (IoT cloud, digital infrastructure)
+  - "002642"   # 荣联科技   (cloud & IT services)
+  - "000815"   # 美利云     (cloud infrastructure)
+  - "688365"   # 光云科技   (e-commerce cloud SaaS)
+  - "688228"   # 开普云     (government cloud platform)
+  # AI platforms & large models
+  - "002230"   # 科大讯飞   (iFlytek — leading AI voice / NLP / large model)
+  - "688327"   # 云从科技-UW (Cloudwalk — AI vision + cloud platform)
+  - "688031"   # 星环科技-U  (Transwarp — big data & AI platform)
+  - "688343"   # 云天励飞-U  (AI vision cloud, smart city)
+  - "688207"   # 格灵深瞳   (AI vision analytics)
+  - "002362"   # 汉王科技   (AI handwriting / OCR)
+  - "688615"   # 合合信息   (AI document recognition)
+  - "300229"   # 拓尔思     (NLP / AI text mining)
+  - "688039"   # 当虹科技   (AI video cloud)
+  - "688568"   # 中科星图   (AI earth observation, geospatial cloud)
+  - "688088"   # 虹软科技   (on-device AI vision algorithms)
+  - "920493"   # 并行科技   (AI parallel computing / HPC cloud)
+  - "300496"   # 中科创达   (AI edge computing OS)
+  - "002405"   # 四维图新   (AI mapping & autonomous driving data)
+  # AI computing infrastructure
+  - "000977"   # 浪潮信息   (AI server & cloud computing infra)
+  - "603019"   # 中科曙光   (HPC / AI computing servers)
+  - "920808"   # 曙光数创   (liquid-cooled AI data centre)
+
+cybersecurity:
+  - "300454"   # 深信服     (Sangfor — cybersecurity + cloud)
+  - "688561"   # 奇安信-U   (QAX — enterprise cybersecurity)
+  - "300369"   # 绿盟科技   (NSFOCUS — network security)
+  - "688023"   # 安恒信息   (cybersecurity / cloud security)
+  - "688225"   # 亚信安全   (AIS — cybersecurity)
+  - "601360"   # 三六零     (360 Security)
+  - "002212"   # 天融信     (network & data security)
+  - "688152"   # 麒麟信安   (OS-level security, trusted computing)
+  - "002439"   # 启明星辰   (network security)
+  - "300768"   # 迪普科技   (network security appliances)
+  - "688030"   # 山石网科   (Hillstone — network security)
+  - "688651"   # 盛邦安全   (industrial control cybersecurity)
+  - "688244"   # 永信至诚   (cybersecurity training & testing)
+  - "688201"   # 信安世纪   (PKI / identity security)
+  - "003029"   # 吉大正元   (cryptographic security)
+  - "300579"   # 数字认证   (digital certificate authority)
+  - "300352"   # 北信源     (terminal security)
+
+data_and_analytics:
+  - "603138"   # 海量数据   (big data storage & management)
+  - "688229"   # 博睿数据   (application performance monitoring)
+  - "300166"   # 东方国信   (telecom big data analytics)
+  - "688500"   # 慧辰股份   (data analytics consulting)
+  - "300212"   # 易华录     (government data platform / data lake)
+
+internet_and_media:
+  - "300033"   # 同花顺     (stock data & financial internet platform)
+  - "600570"   # 恒生电子   (financial tech internet platform)
+  - "300288"   # 朗玛信息   (mobile internet / healthcare platform)
+  - "600536"   # 中国软件   (state-owned cloud & internet software)
+  - "688066"   # 航天宏图   (remote sensing SaaS / internet)

@@ -1,0 +1,74 @@
+# Taiwan stock watchlist — Tech stocks only
+
+semiconductor:
+  - "2330"    # TSMC
+  - "2454"    # MediaTek
+  - "3034"    # Novatek
+  - "2303"    # United Microelectronics (UMC)
+  - "3711"    # ASE Technology
+  - "2379"    # Realtek
+  - "6488"    # Global Unichip
+  - "3529"    # Ememory Technology
+  - "5274"    # ASPEED Technology
+  - "2408"    # Nanya Technology
+  - "6415"    # Silergy
+  - "4966"    # Parade Technologies
+  - "2344"    # Winbond Electronics
+  - "3661"    # Alchip Technologies
+  - "5347"    # Vanguard International Semiconductor
+  - "6770"    # Powerchip Semiconductor
+  - "5269"    # Faraday Technology
+  - "2449"    # Kyec (King Yuan Electronics)
+
+pcb_and_substrate:
+  - "3037"    # Unimicron
+  - "8046"    # Nanya PCB
+  - "3044"    # Tripod Technology
+
+odm_and_systems:
+  - "2317"    # Hon Hai (Foxconn)
+  - "2382"    # Quanta Computer
+  - "2357"    # ASUS (Asustek)
+  - "3231"    # Wistron
+  - "2353"    # Acer
+  - "2356"    # Inventec
+  - "2324"    # Compal Electronics
+  - "2376"    # GigaByte Technology
+  - "2377"    # Micro-Star International (MSI)
+  - "6669"    # Wiwynn
+  - "2354"    # Foxconn Industrial Internet
+
+networking_and_comms:
+  - "2345"    # Accton Technology
+  - "3017"    # AVerMedia Technologies
+
+components_and_precision:
+  - "2308"    # Delta Electronics
+  - "2301"    # Lite-On Technology
+  - "2327"    # Yageo
+  - "2474"    # Catcher Technology
+  - "3008"    # Largan Precision
+  - "2395"    # Advantech
+  - "3529"    # Eoptolink Technology (Ememory)
+
+optoelectronics:
+  - "3443"    # Phison Electronics
+
+storage_and_embedded:
+  - "3706"    # Innodisk
+
+healthcare:
+  - "4536"    # Herng Fa Chyang (medical devices)
+  - "2727"    # World Chen Construction (medical related)
+
+fintech:
+  - "2884"    # E.SUN Financial Holding
+  - "2886"    # Mega Financial Holding
+
+ev_and_energy:
+  - "2308"    # Delta Electronics (power electronics / EV charging)
+  - "2359"    # Solomon Technology (EV components)
+
+internet_and_media:
+  - "3008"    # Largan Precision (optics for mobile/media devices)
+  - "2327"    # Yageo (components for internet infrastructure)

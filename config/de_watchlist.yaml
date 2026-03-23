@@ -1,0 +1,47 @@
+# Germany stock watchlist — Tech stocks only
+# XETRA tickers, no .DE suffix
+
+software:
+  - SAP       # SAP SE
+  - SOW       # Software AG
+  - COK       # Cancom
+  - GFT       # GFT Technologies
+  - BC8       # Bechtle
+
+semiconductor_and_hardware:
+  - IFX       # Infineon Technologies
+  - AIXA      # Aixtron
+  - WAF       # Siltronic
+  - JEN       # Jenoptik
+
+internet_and_telecom:
+  - UTDI      # United Internet
+  - 1U1       # 1&1
+  - FNTN      # Freenet
+
+solar_tech:
+  - S92       # SMA Solar Technology
+
+ev_and_energy:
+  - BMW       # Bayerische Motoren Werke (BMW)
+  - MBG       # Mercedes-Benz Group
+  - RWE       # RWE AG (renewables/energy)
+
+cloud_and_ai:
+  - NFON      # NFON AG
+  - ADN       # Adesso SE
+  - AIIC      # Artificial Intelligence in Industry (AI AG)
+
+fintech:
+  - HYQ       # Hypoport SE
+  - DBO       # Deutsche Beteiligungs AG
+
+healthcare:
+  - SHL       # Siemens Healthineers
+  - AFX       # Carl Zeiss Meditec
+  - EVT       # Evotec SE
+
+internet_and_media:
+  - DHER      # Delivery Hero
+  - G24       # Scout24
+  - TRVG      # Trivago
