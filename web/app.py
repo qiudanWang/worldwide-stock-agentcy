@@ -2484,73 +2484,94 @@ def api_backtest_strategies():
 @app.route("/api/backtest/preview", methods=["POST"])
 def api_backtest_preview():
     """
-    Run each signal on the latest available data, return unified stock table.
-    Body: {"market": str, "universe_source": dict, "signal": dict}
-    Returns: {"tickers": [{ticker, name, sector, subsector, strategies: [...], signal_count}], "count": int}
+    Preview selected stocks from all active signal sources combined.
+    Body: {"market": str, "signals": [{type, ...label}, ...]}
+      signal types:
+        builtin:        {type:"builtin", name: str|list, label: str}
+        code:           {type:"code", code: str, label: str}
+        custom_tickers: {type:"custom_tickers", tickers: [str,...], label: str}
+    Returns: {"tickers": [{ticker, name, sector, strategies, signal_count}], "count": int}
     """
     from src.backtest.engine import _load_universe_df, _build_signal_fn
-    from src.backtest.data_loader import load_market_history_batch
-    from src.backtest.strategies import get_strategy, STRATEGIES
+    from src.backtest.strategies import get_strategy
+    from src.common.config import get_data_path
+    import pandas as pd
 
-    body            = request.get_json(force=True)
-    market          = body.get("market", "US").upper()
-    universe_source = body.get("universe_source", {"type": "market"})
-    signal          = body.get("signal", {"type": "builtin", "name": "daily_volume_breakout"})
+    body    = request.get_json(force=True)
+    market  = body.get("market", "US").upper()
+    signals = body.get("signals", [])
+
+    if not signals:
+        return jsonify({"tickers": [], "count": 0, "error": "No signals provided"})
 
     try:
+        universe_source = {"type": "market"}
         universe_df = _load_universe_df(universe_source, market)
         if universe_df.empty:
-            return jsonify({"tickers": [], "count": 0, "error": f"No universe data for {market}"})
+            return jsonify({"tickers": [], "count": 0,
+                            "error": f"No universe data for {market}. Run the data pipeline first."})
 
-        from datetime import datetime, timedelta
-        import pandas as pd
-        end   = datetime.now()
-        start = end - timedelta(days=60)
-        history = load_market_history_batch(market, start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"))
-        signal_date = pd.Timestamp(end.strftime("%Y-%m-%d"))
+        # Load history from market_daily snapshots — fast single parquet read, no network calls
+        import glob as _glob
+        daily_files = sorted(_glob.glob(
+            os.path.join(get_data_path("markets", market), "market_daily_*.parquet")
+        ))
+        if not daily_files:
+            return jsonify({"tickers": [], "count": 0,
+                            "error": f"No market data for {market}. Run the data pipeline first."})
 
-        # Build per-strategy selections
-        ticker_strategies: dict = {}  # ticker -> [strategy_label, ...]
+        market_df = pd.read_parquet(daily_files[-1])  # latest snapshot contains full rolling history
+        history   = {tk: grp.reset_index(drop=True) for tk, grp in market_df.groupby("ticker")}
+        signal_date = market_df["date"].max()
 
-        stype = signal.get("type", "builtin")
-        names = signal.get("name", [])
+        # Run each signal source, collect {ticker -> [label,...]}
+        ticker_strategies: dict = {}
 
-        if stype == "builtin":
-            if isinstance(names, str):
-                names = [names]
-            for name in names:
-                try:
-                    s = get_strategy(name)
-                    label = s.description or name
-                    selected = s.select(universe_df, history, signal_date)
-                    for tk in selected:
-                        ticker_strategies.setdefault(tk, []).append(label)
-                except Exception:
-                    pass
-        else:
-            # code signal: single run, label as "Custom"
-            timeframe = signal.get("timeframe", "daily")
-            signal_fn = _build_signal_fn(signal, timeframe)
-            for tk in signal_fn(universe_df, history, signal_date):
-                ticker_strategies.setdefault(tk, []).append("Custom Signal")
+        for sig in signals:
+            stype = sig.get("type", "builtin")
+            label = sig.get("label", stype)
+            try:
+                if stype == "builtin":
+                    names = sig.get("name", [])
+                    if isinstance(names, str):
+                        names = [names]
+                    for name in names:
+                        s = get_strategy(name)
+                        slabel = s.description or name
+                        for tk in s.select(universe_df, history, signal_date):
+                            ticker_strategies.setdefault(tk, []).append(slabel)
+
+                elif stype == "code":
+                    code = sig.get("code", "")
+                    if code.strip():
+                        signal_fn = _build_signal_fn({"type": "code", "code": code}, "daily")
+                        for tk in signal_fn(universe_df, history, signal_date):
+                            ticker_strategies.setdefault(tk, []).append(label)
+
+                elif stype == "custom_tickers":
+                    for tk in sig.get("tickers", []):
+                        ticker_strategies.setdefault(tk.upper(), []).append(label)
+
+            except Exception as e:
+                app.logger.warning(f"Preview signal '{label}' failed: {e}")
 
         # Enrich with universe metadata
-        meta = universe_df.set_index("ticker") if not universe_df.empty else pd.DataFrame()
+        meta = universe_df.set_index("ticker")
         result = []
-        for tk, strategies in ticker_strategies.items():
+        for tk, strats in ticker_strategies.items():
             row = meta.loc[tk] if tk in meta.index else {}
             result.append({
                 "ticker":       tk,
                 "name":         str(row.get("name",      "")) if hasattr(row, "get") else "",
                 "sector":       str(row.get("sector",    "")) if hasattr(row, "get") else "",
                 "subsector":    str(row.get("subsector", "")) if hasattr(row, "get") else "",
-                "strategies":   strategies,
-                "signal_count": len(strategies),
+                "strategies":   strats,
+                "signal_count": len(strats),
             })
 
-        # Sort: most signals first, then ticker
         result.sort(key=lambda x: (-x["signal_count"], x["ticker"]))
-        return jsonify({"tickers": result, "count": len(result)})
+        return jsonify({"tickers": result, "count": len(result),
+                        "signal_date": signal_date.strftime("%Y-%m-%d")})
 
     except Exception as e:
         app.logger.warning(f"Preview failed: {e}")
@@ -2587,7 +2608,9 @@ def api_backtest_validate_signal():
     Returns: {"valid": bool, "tickers": [...], "error": str}
     """
     from src.backtest.signal_builder import validate_select_fn
-    from src.backtest.data_loader import load_universe, load_market_history_batch
+    from src.backtest.data_loader import load_universe
+    from src.common.config import get_data_path
+    import glob as _glob
 
     body   = request.get_json(force=True)
     code   = body.get("code", "")
@@ -2598,16 +2621,18 @@ def api_backtest_validate_signal():
         if universe_df.empty:
             return jsonify({"valid": False, "error": f"No universe data for {market}"})
 
-        sample_tickers  = universe_df["ticker"].head(30).tolist()
-        sample_universe = universe_df[universe_df["ticker"].isin(sample_tickers)]
+        # Use market_daily snapshot — fast, no network calls
+        daily_files = sorted(_glob.glob(
+            os.path.join(get_data_path("markets", market), "market_daily_*.parquet")
+        ))
+        if not daily_files:
+            return jsonify({"valid": False, "error": f"No market data for {market}. Run the data pipeline first."})
 
-        from datetime import datetime as _dt, timedelta as _td
-        end   = _dt.now()
-        start = end - _td(days=90)
-        history = load_market_history_batch(market, start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"))
+        market_df = pd.read_parquet(daily_files[-1])
+        history   = {tk: grp.reset_index(drop=True) for tk, grp in market_df.groupby("ticker")}
+        test_date = market_df["date"].max()
 
-        test_date = pd.Timestamp(end.strftime("%Y-%m-%d"))
-        result = validate_select_fn(code, sample_universe, history, test_date)
+        result = validate_select_fn(code, universe_df, history, test_date)
         return jsonify(result)
     except Exception as e:
         return jsonify({"valid": False, "error": str(e)})

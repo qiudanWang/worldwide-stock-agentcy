@@ -8,7 +8,7 @@ log() { echo "[$(date '+%H:%M:%S')] $1"; }
 
 log "Starting Global Tech Market on port 5000..."
 cd "$PROJECT_DIR"
-"$VENV" -m flask --app web.app run --host=0.0.0.0 --port=5000 &
+"$VENV" -m flask --app web.app run --host=0.0.0.0 --port=5000 --debug &
 FLASK_PID=$!
 log "Flask started (PID $FLASK_PID)"
 log "  Main app: http://localhost:5000"

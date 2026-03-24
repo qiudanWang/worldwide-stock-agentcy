@@ -46,6 +46,10 @@ Rules:
 - Return at most 20 tickers
 - Return empty list if data insufficient
 - Do NOT import anything
+- The DataFrame index is integers (0, 1, 2, ...) — NEVER use df.loc[date] or df.loc[timestamp]
+- To filter up to the signal date: df = df[df['date'] <= date]
+- To get the latest row: df.iloc[-1]  (after filtering)
+- Always filter by date before accessing any row
 
 Return JSON: {"code": "<python code>", "explanation": "<one sentence what it does>"}
 """
@@ -92,27 +96,55 @@ def generate_signal_code(description: str, llm_config: dict) -> dict:
         raw = resp.choices[0].message.content or ""
         log.debug(f"[signal_builder] LLM raw response: {raw[:200]}")
 
-        # Extract JSON
-        match = re.search(r'\{.*\}', raw, re.DOTALL)
-        if not match:
-            # Maybe the whole response is JSON-like
-            match = re.search(r'\{[^{}]*"code"[^{}]*\}', raw, re.DOTALL)
+        # 1. Prefer explicit ```python code block — most reliable
+        code_match = re.search(r'```python\s*(.*?)```', raw, re.DOTALL)
+        if code_match:
+            code = code_match.group(1).strip()
+            # Try to grab explanation from surrounding text
+            expl_match = re.search(r'"explanation"\s*:\s*"([^"]*)"', raw)
+            explanation = expl_match.group(1) if expl_match else description
+            return {"code": code, "explanation": explanation, "success": True, "error": ""}
 
-        if match:
-            parsed = json.loads(match.group())
+        # 2. Try JSON — LLM may embed literal newlines in string values (invalid JSON),
+        #    so encode them before parsing then decode back after.
+        json_match = re.search(r'\{.*\}', raw, re.DOTALL)
+        if json_match:
+            json_str = json_match.group()
+            try:
+                parsed = json.loads(json_str)
+            except json.JSONDecodeError:
+                # Fix literal control characters inside JSON string values
+                def _fix_json(s):
+                    # Replace literal newlines/tabs only inside string values
+                    out, in_str, i = [], False, 0
+                    while i < len(s):
+                        c = s[i]
+                        if c == '"' and (i == 0 or s[i-1] != '\\'):
+                            in_str = not in_str
+                            out.append(c)
+                        elif in_str and c == '\n':
+                            out.append('\\n')
+                        elif in_str and c == '\t':
+                            out.append('\\t')
+                        elif in_str and c == '\r':
+                            out.append('\\r')
+                        else:
+                            out.append(c)
+                        i += 1
+                    return ''.join(out)
+                try:
+                    parsed = json.loads(_fix_json(json_str))
+                except json.JSONDecodeError as e:
+                    return {"code": "", "explanation": "", "success": False,
+                            "error": f"Could not parse LLM response: {e}"}
+
             code = parsed.get("code", "").strip()
             explanation = parsed.get("explanation", "").strip()
             if code:
                 return {"code": code, "explanation": explanation, "success": True, "error": ""}
-            else:
-                return {"code": "", "explanation": "", "success": False, "error": "LLM returned empty code"}
-        else:
-            # Try to extract code block
-            code_match = re.search(r'```python\s*(.*?)```', raw, re.DOTALL)
-            if code_match:
-                code = code_match.group(1).strip()
-                return {"code": code, "explanation": description, "success": True, "error": ""}
-            return {"code": "", "explanation": "", "success": False, "error": f"Could not parse LLM response: {raw[:200]}"}
+
+        return {"code": "", "explanation": "", "success": False,
+                "error": f"Could not extract code from LLM response: {raw[:200]}"}
 
     except Exception as e:
         log.error(f"[signal_builder] LLM call failed: {e}")
@@ -136,8 +168,13 @@ _SAFE_BUILTINS = {
 }
 
 _BLOCKED_PATTERNS = [
-    r"\bimport\b", r"\bopen\b", r"\bexec\b", r"\beval\b",
-    r"\b__import__\b", r"\b__builtins__\b", r"\bos\b", r"\bsys\b",
+    r"\bimport\b",
+    r"\bopen\s*\(",        # open() as a function call, not as a column name string
+    r"\bexec\s*\(",
+    r"\beval\s*\(",
+    r"\b__import__\s*\(",
+    r"\b__builtins__\b",
+    r"\bos\.(?:path|system|popen|listdir|remove|rename|getcwd|environ)\b",
     r"\bsubprocess\b", r"\bshutil\b", r"\bpathlib\b",
 ]
 
@@ -202,8 +239,14 @@ def safe_call_select(fn: Callable, universe_df: pd.DataFrame, history: dict, dat
                 result_container[0] = [str(t) for t in result[:20]]
             else:
                 error_container[0] = f"select() returned {type(result).__name__}, expected list"
+        except KeyError as e:
+            error_container[0] = (
+                f"KeyError: {e}. "
+                "Tip: don't use df.loc[date] — the index is integers. "
+                "Use df[df['date'] <= date].iloc[-1] to get the latest row."
+            )
         except Exception as e:
-            error_container[0] = f"Runtime error: {e}"
+            error_container[0] = f"Runtime error: {type(e).__name__}: {e}"
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()

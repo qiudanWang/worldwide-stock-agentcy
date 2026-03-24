@@ -171,6 +171,29 @@ def _build_signal_fn(signal: dict, timeframe: str) -> Callable:
             raise ValueError(f"Signal code compilation failed: {err}")
         return fn
 
+    elif stype == "multi_code":
+        # Union of multiple code signals (for multiple NL signals)
+        codes = signal.get("codes", [])
+        if not codes:
+            raise ValueError("signal type 'multi_code' requires 'codes' list")
+        from src.backtest.signal_builder import safe_compile
+        fns = []
+        for code in codes:
+            fn, err = safe_compile(code)
+            if fn is None:
+                raise ValueError(f"Signal code compilation failed: {err}")
+            fns.append(fn)
+        def _multi_combined(universe_df, history, date):
+            seen: set = set()
+            result = []
+            for fn in fns:
+                for tk in fn(universe_df, history, date):
+                    if tk not in seen:
+                        seen.add(tk)
+                        result.append(tk)
+            return result
+        return _multi_combined
+
     else:
         raise ValueError(f"Unknown signal type {stype!r}")
 
@@ -260,6 +283,10 @@ def _run_yearly_mode(
     equity_curve = []
     trades     = []
 
+    # Name lookup
+    _uni = _load_universe_df(universe_source, market)
+    _name_map: dict[str, str] = dict(zip(_uni["ticker"], _uni["name"])) if "name" in _uni.columns else {}
+
     all_years = list(range(start_year, end_year + 1))
     total = len(all_years)
 
@@ -301,6 +328,7 @@ def _run_yearly_mode(
                 pnl_pct = exit_px / entry_px - 1 - COMMISSION * 2
                 trades.append({
                     "ticker":      tk,
+                    "name":        _name_map.get(tk, ""),
                     "entry_date":  str(start_row.iloc[0]["date"])[:10],
                     "exit_date":   str(end_row.iloc[-1]["date"])[:10],
                     "entry_price": round(entry_px, 4),
@@ -321,7 +349,7 @@ def _run_yearly_mode(
     return {
         "cohorts":      cohorts,
         "equity_curve": equity_curve,
-        "trades":       trades[-200:],
+        "trades":       trades,
     }
 
 
@@ -449,10 +477,18 @@ def run_backtest(
             close_map[tk] = dict(zip(df["date"], df["close"]))
             open_map[tk]  = dict(zip(df["date"], df["open"]))
 
+        # Name lookup for trades display
+        name_map: dict[str, str] = {}
+        if "name" in universe_df.columns:
+            name_map = dict(zip(universe_df["ticker"], universe_df["name"]))
+
         # ── 6. Simulation loop ──────────────────────────────────────────────
         equity        = INITIAL_EQUITY
         held_tickers: list[str] = []
-        held_prices:  dict[str, float] = {}
+        # held_cost:   original entry cost basis — used ONLY for trade pnl calculation
+        # held_prev_px: previous close — used for daily MTM (updated each iteration)
+        held_cost:    dict[str, float] = {}
+        held_prev_px: dict[str, float] = {}
         held_dates:   dict[str, pd.Timestamp] = {}
 
         equity_curve: list = []
@@ -464,13 +500,40 @@ def run_backtest(
 
         for signal_date in rebal_dates:
             future = [d for d in all_dates if d > signal_date]
-            if not future:
+            exec_date = future[0] if future else None
+
+            # ── Mark equity FIRST using current (old) portfolio ──────────────
+            # Use daily return (close / prev_close) to avoid compounding total
+            # return from cost basis every iteration.
+            if held_tickers:
+                day_returns = []
+                for tk in held_tickers:
+                    curr_px = close_map.get(tk, {}).get(signal_date)
+                    if curr_px is None or curr_px <= 0:
+                        df = history.get(tk)
+                        if df is not None and not df.empty:
+                            row = df[df["date"] <= signal_date]
+                            curr_px = float(row["close"].iloc[-1]) if not row.empty else None
+                    prev_px = held_prev_px.get(tk)
+                    if curr_px and curr_px > 0 and prev_px and prev_px > 0:
+                        day_returns.append(curr_px / prev_px)
+                        held_prev_px[tk] = curr_px   # advance reference for next bar
+                    elif curr_px and curr_px > 0:
+                        held_prev_px[tk] = curr_px   # first bar after entry: set reference
+                if day_returns:
+                    equity = equity * sum(day_returns) / len(day_returns)
+            equity_curve.append((str(signal_date)[:10], round(equity, 2)))
+
+            if exec_date is None:
+                done_steps += 1
                 continue
-            exec_date = future[0]
 
-            new_tickers = signal_fn(universe_df, history, signal_date)
+            # ── Generate signal ──────────────────────────────────────────────
+            # Pre-filter history to <= signal_date to prevent any look-ahead
+            signal_history = {tk: df[df["date"] <= signal_date] for tk, df in history.items()}
+            new_tickers = signal_fn(universe_df, signal_history, signal_date)
 
-            # Close positions not in new portfolio
+            # ── Close positions not in new portfolio (at exec_date open) ─────
             for tk in list(held_tickers):
                 if tk not in new_tickers:
                     exit_px = open_map.get(tk, {}).get(exec_date)
@@ -479,10 +542,11 @@ def run_backtest(
                     if exit_px is None or exit_px <= 0:
                         held_tickers.remove(tk)
                         continue
-                    entry_px = held_prices.get(tk, exit_px)
+                    entry_px = held_cost.get(tk, exit_px)
                     pnl_pct  = exit_px / entry_px - 1 - COMMISSION
                     trades.append({
                         "ticker":      tk,
+                        "name":        name_map.get(tk, ""),
                         "entry_date":  str(held_dates.get(tk, signal_date))[:10],
                         "exit_date":   str(exec_date)[:10],
                         "entry_price": round(entry_px, 4),
@@ -490,35 +554,20 @@ def run_backtest(
                         "pnl_pct":     round(pnl_pct, 6),
                     })
                     held_tickers.remove(tk)
-                    if tk in held_prices: del held_prices[tk]
-                    if tk in held_dates:  del held_dates[tk]
+                    held_cost.pop(tk, None)
+                    held_prev_px.pop(tk, None)
+                    held_dates.pop(tk, None)
 
-            # Open new positions
+            # ── Open new positions (at exec_date open) ───────────────────────
             for tk in new_tickers:
                 if tk not in held_tickers:
                     entry_px = open_map.get(tk, {}).get(exec_date)
                     if entry_px is None or entry_px <= 0:
                         continue
                     held_tickers.append(tk)
-                    held_prices[tk] = entry_px * (1 + COMMISSION)
-                    held_dates[tk]  = exec_date
-
-            # Mark equity to market
-            if held_tickers:
-                n     = len(held_tickers)
-                value = 0.0
-                for tk in held_tickers:
-                    px = close_map.get(tk, {}).get(signal_date)
-                    if px is None or px <= 0:
-                        df = history.get(tk)
-                        if df is not None and not df.empty:
-                            row = df[df["date"] <= signal_date]
-                            px = float(row["close"].iloc[-1]) if not row.empty else 0.0
-                    if px and px > 0:
-                        value += px / held_prices.get(tk, px)
-                if n > 0:
-                    equity = equity * value / n if value > 0 else equity
-            equity_curve.append((str(signal_date)[:10], round(equity, 2)))
+                    held_cost[tk]    = entry_px * (1 + COMMISSION)   # for trade pnl
+                    held_prev_px[tk] = entry_px                       # MTM reference: entry open
+                    held_dates[tk]   = exec_date
 
             done_steps += 1
             if progress_callback and done_steps % 20 == 0:
@@ -529,11 +578,12 @@ def run_backtest(
             last_date = all_dates[-1]
             for tk in held_tickers:
                 exit_px  = close_map.get(tk, {}).get(last_date)
-                entry_px = held_prices.get(tk, exit_px or 1.0)
+                entry_px = held_cost.get(tk, exit_px or 1.0)
                 if exit_px and exit_px > 0 and entry_px > 0:
                     pnl_pct = exit_px / entry_px - 1 - COMMISSION
                     trades.append({
                         "ticker":      tk,
+                        "name":        name_map.get(tk, ""),
                         "entry_date":  str(held_dates.get(tk, last_date))[:10],
                         "exit_date":   str(last_date)[:10],
                         "entry_price": round(entry_px, 4),
@@ -562,8 +612,8 @@ def run_backtest(
         "strategy":      signal_label,
         "universe":      universe_source,
         "metrics":       {k: round(v, 6) if isinstance(v, float) else v for k, v in metrics.items()},
-        "equity_curve":  equity_curve[-500:],
-        "trades":        trades[-200:],
+        "equity_curve":  equity_curve,
+        "trades":        trades,
         "num_tickers":   len(universe_df),
         "history_years": history_years,
         "duration_s":    duration,

@@ -121,7 +121,8 @@
 .btn-magic:hover { background: #2d2d5e; border-color: #a371f7; }
 .btn-validate { background: #132f1e; border-color: #2ea043; color: #3fb950; }
 .btn-validate:hover { background: #1b4128; }
-.btn-sm { padding: 3px 10px; font-size: 11px; }
+.btn-sm { padding: 3px 10px; font-size: 11px; background: #21262d; border-color: #30363d; color: #6e7681; }
+.btn-sm.active { border-color: #58a6ff; color: #58a6ff; background: #132338; }
 .btn-secondary { background: #21262d; border-color: #30363d; color: #c9d1d9; }
 .btn-secondary:hover { background: #30363d; }
 
@@ -165,6 +166,23 @@
 .chart-wrap { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
 .chart-wrap h3 { margin: 0 0 12px; font-size: 12px; color: #6e7681; text-transform: uppercase; letter-spacing: .5px; }
 
+/* Per-strategy breakdown */
+.detail-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 10px 14px; background: #161b22; border: 1px solid #21262d; border-radius: 8px; margin-bottom: 12px; user-select: none; font-size: 12px; color: #8b949e; transition: border-color .15s; }
+.detail-toggle:hover { border-color: #388bfd; color: #c9d1d9; }
+.detail-toggle .toggle-arrow { font-size: 10px; transition: transform .2s; display: inline-block; }
+.detail-toggle.open .toggle-arrow { transform: rotate(90deg); }
+.detail-body { display: none; }
+.detail-body.open { display: block; }
+.strategy-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.strategy-card { background: #0d1117; border: 1px solid #21262d; border-radius: 8px; padding: 14px; }
+.strategy-card .sc-name { font-size: 11px; color: #8b949e; margin-bottom: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.strategy-card .sc-metrics { display: flex; gap: 14px; margin-bottom: 10px; }
+.strategy-card .sc-m { text-align: center; }
+.strategy-card .sc-m .sc-ml { font-size: 10px; color: #6e7681; }
+.strategy-card .sc-m .sc-mv { font-size: 14px; font-weight: 700; color: #c9d1d9; }
+.strategy-card .sc-m .sc-mv.up { color: #3fb950; }
+.strategy-card .sc-m .sc-mv.down { color: #f85149; }
+
 .trades-table { font-size: 12px; }
 .trades-table th { position: sticky; top: 0; background: #161b22; z-index: 1; }
 .trades-table td.pnl-pos { color: #3fb950; }
@@ -183,6 +201,17 @@
 .pt-sector { color: #6e7681; }
 .pt-strategy { color: #8b949e; font-size: 11px; }
 .pt-signals { color: #58a6ff; letter-spacing: 2px; font-size: 10px; }
+
+/* NL signal cards */
+.nl-card {
+    border: 1px solid #21262d; border-radius: 8px; padding: 12px 14px;
+    margin-bottom: 10px; background: #0d1117;
+}
+.nl-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.nl-card-label { font-size: 11px; color: #6e7681; }
+.btn-remove { background: none; border: 1px solid #30363d; color: #6e7681; border-radius: 6px;
+    font-size: 11px; padding: 2px 8px; cursor: pointer; transition: all .15s; }
+.btn-remove:hover { border-color: #f85149; color: #f85149; }
 
 /* Results section only shows for active tf */
 .tf-result { display: none; }
@@ -229,9 +258,6 @@
         <div class="bt-nav-item" onclick="selectSig('nl')">
             <div class="bt-nav-dot"></div> Natural Language
         </div>
-        <div class="bt-nav-item" onclick="selectSig('code')">
-            <div class="bt-nav-dot"></div> Write Python
-        </div>
         <div class="bt-nav-item" onclick="selectSig('manual')">
             <div class="bt-nav-dot"></div> Ticker List
         </div>
@@ -248,61 +274,16 @@
 
         <!-- Natural Language -->
         <div class="bt-pane" id="pane-nl">
-            <div class="data-ref">
+            <div class="data-ref" style="margin-bottom:12px;">
                 <div class="data-ref-title" onclick="toggleRef('nl-ref')">&#9432; Available fields <span id="nl-ref-arrow">&#9660;</span></div>
                 <div class="data-ref-body" id="nl-ref">
                     <div class="data-ref-row"><span class="data-ref-var">universe_df</span> — <span class="data-ref-fields">ticker, name, sector, subsector</span></div>
                     <div class="data-ref-row"><span class="data-ref-var">history[ticker]</span> — <span class="data-ref-fields">date, open, high, low, close, volume</span></div>
-                    <div class="data-ref-row"><span class="data-ref-var">date</span> — pd.Timestamp signal date. Filter: <span class="data-ref-fields">df[df['date'] &lt;= date]</span></div>
+                    <div class="data-ref-row"><span class="data-ref-var">date</span> — pd.Timestamp signal date</div>
                 </div>
             </div>
-            <div style="display:flex; gap:8px; align-items:flex-start;">
-                <textarea id="nl-description" rows="2"
-                    style="flex:1; font-size:13px; background:#0d1117; border:1px solid #30363d; color:#c9d1d9; padding:8px; border-radius:6px; resize:vertical;"
-                    placeholder="e.g. select top 10 stocks by 20-day momentum with volume above 20-day average"></textarea>
-                <button class="btn btn-magic" onclick="generateCode()">&#10024; Generate</button>
-            </div>
-            <div id="nl-status" class="inline-status"></div>
-            <div id="nl-code-wrap" style="display:none; margin-top:10px;">
-                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-                    <span style="font-size:11px; color:#6e7681;">Generated code (editable)</span>
-                    <button class="btn btn-validate btn-sm" onclick="validateCode('nl')">&#10003; Validate</button>
-                </div>
-                <textarea class="code-editor" id="nl-code" rows="10"></textarea>
-                <div id="nl-validate-status" class="inline-status"></div>
-            </div>
-        </div>
-
-        <!-- Write Python -->
-        <div class="bt-pane" id="pane-code">
-            <div class="data-ref">
-                <div class="data-ref-title" onclick="toggleRef('code-ref')">&#9432; Available fields <span id="code-ref-arrow">&#9660;</span></div>
-                <div class="data-ref-body" id="code-ref">
-                    <div class="data-ref-row"><span class="data-ref-var">universe_df</span> — <span class="data-ref-fields">ticker, name, sector, subsector</span></div>
-                    <div class="data-ref-row"><span class="data-ref-var">history[ticker]</span> — <span class="data-ref-fields">date, open, high, low, close, volume</span></div>
-                    <div class="data-ref-row"><span class="data-ref-var">date</span> — pd.Timestamp &nbsp;|&nbsp; Available: <span class="data-ref-fields">pd</span>, <span class="data-ref-fields">np</span> (no imports needed)</div>
-                </div>
-            </div>
-            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-                <span style="font-size:11px; color:#6e7681; font-family:monospace;">def select(universe_df, history, date) &rarr; list[str]</span>
-                <button class="btn btn-validate btn-sm" onclick="validateCode('code')">&#10003; Validate</button>
-            </div>
-            <textarea class="code-editor" id="manual-code" rows="12"
-                placeholder="def select(universe_df, history, date):
-    tickers = universe_df['ticker'].tolist()
-    scores = []
-    for tk in tickers:
-        df = history.get(tk)
-        if df is None or df.empty:
-            continue
-        df = df[df['date'] <= date].tail(21)
-        if len(df) < 21:
-            continue
-        ret = float(df['close'].iloc[-1] / df['close'].iloc[0] - 1)
-        scores.append((tk, ret))
-    scores.sort(key=lambda x: x[1], reverse=True)
-    return [t for t, _ in scores[:10]]"></textarea>
-            <div id="code-validate-status" class="inline-status"></div>
+            <div id="nl-signals-container"></div>
+            <button class="btn btn-secondary" onclick="addNlSignal()" style="font-size:12px; margin-top:8px;">+ Add Signal</button>
         </div>
 
         <!-- Ticker List -->
@@ -318,18 +299,6 @@
             </div>
         </div>
 
-        <!-- Preview panel (shared across all panes) -->
-        <div id="preview-panel" style="display:none; margin-top:16px; border-top:1px solid #21262d; padding-top:14px;">
-            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
-                <span style="font-size:11px; color:#6e7681; text-transform:uppercase; letter-spacing:.5px;">
-                    Selected Stocks <span id="preview-count" class="badge"></span>
-                </span>
-                <span style="font-size:11px; color:#484f58;" id="preview-meta"></span>
-            </div>
-            <div id="preview-list" style="overflow-x:auto;"></div>
-            <div id="preview-error" style="font-size:12px; color:#f85149; margin-top:6px; display:none;"></div>
-        </div>
-
     </div><!-- .bt-content -->
 </div><!-- .bt-panel -->
 
@@ -340,12 +309,26 @@
     </button>
 </div>
 
+<!-- Preview panel — standalone table -->
+<div id="preview-panel" style="display:none; background:#161b22; border:1px solid #21262d; border-radius:10px; padding:16px 20px; margin-bottom:16px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+        <span style="font-size:12px; color:#8b949e; text-transform:uppercase; letter-spacing:.5px; font-weight:600;">
+            Selected Stocks <span id="preview-count" class="badge" style="font-weight:400; font-size:11px;"></span>
+        </span>
+        <span style="font-size:11px; color:#484f58;" id="preview-meta"></span>
+    </div>
+    <div id="preview-list" style="overflow-x:auto;"></div>
+    <div id="preview-error" style="font-size:12px; color:#f85149; margin-top:6px; display:none;"></div>
+</div>
+
 <!-- ── Run bar ────────────────────────────────────────────────────────────── -->
 <div class="bt-bottombar">
     <span class="status-badge" id="run-status">Not run</span>
     <span style="font-size:11px; color:#6e7681;" id="run-info"></span>
-    <button class="btn-refresh" onclick="runBacktest(true)" title="Force re-run">&#8635;</button>
-    <button class="btn-run" onclick="runBacktest()">&#9654; Run</button>
+    <label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#6e7681;cursor:pointer;">
+        <input type="checkbox" id="force-rerun"> Force
+    </label>
+    <button class="btn-run" onclick="runBacktest(document.getElementById('force-rerun').checked)">&#9654; Run</button>
 </div>
 
 <!-- ── Results (one block, switches with tf) ────────────────────────────── -->
@@ -374,17 +357,30 @@
     </div>
     {% endif %}
 
+    <!-- Per-strategy breakdown (collapsed) -->
+    <div id="detail-section-{{ tf }}">
+        <div class="detail-toggle" id="detail-toggle-{{ tf }}" onclick="toggleDetail('{{ tf }}')">
+            <span class="toggle-arrow">&#9658;</span>
+            <span>Per-Strategy Breakdown</span>
+            <span class="badge" id="detail-count-{{ tf }}"></span>
+            <span id="detail-loading-{{ tf }}" style="margin-left:auto;font-size:11px;color:#6e7681;display:none;">loading...</span>
+        </div>
+        <div class="detail-body" id="detail-body-{{ tf }}">
+            <div class="strategy-cards" id="strategy-cards-{{ tf }}"></div>
+        </div>
+    </div>
+
     <div class="card" style="margin-top:0;">
         <h2 style="font-size:12px; color:#6e7681; margin-bottom:10px; text-transform:uppercase; letter-spacing:.5px;">
             Trades <span id="trades-count-{{ tf }}" class="badge"></span>
         </h2>
-        <div class="scroll-table" style="max-height:260px;">
+        <div class="scroll-table" style="max-height:320px;">
             <table class="trades-table">
                 <thead>
-                    <tr><th>Ticker</th><th>Entry</th><th>Exit</th><th>Entry Px</th><th>Exit Px</th><th>P&amp;L %</th></tr>
+                    <tr><th>Ticker</th><th>Name</th><th>Entry</th><th>Exit</th><th>Entry Px</th><th>Exit Px</th><th>P&amp;L %</th></tr>
                 </thead>
                 <tbody id="trades-body-{{ tf }}">
-                    <tr><td colspan="6" style="text-align:center;color:#6e7681;padding:20px;">Run a backtest to see trades</td></tr>
+                    <tr><td colspan="7" style="text-align:center;color:#6e7681;padding:20px;">Run a backtest to see trades</td></tr>
                 </tbody>
             </table>
         </div>
@@ -410,7 +406,12 @@ var _tickers  = [];
     document.getElementById('start-date').value = (y-3)+'-'+m+'-'+d;
 })();
 
-document.addEventListener('DOMContentLoaded', function() { loadBuiltins(); });
+document.addEventListener('DOMContentLoaded', function() {
+    loadBuiltins();
+    initNlSignals();
+    restorePreview();
+    restoreResults();
+});
 
 // ── Market ────────────────────────────────────────────────────────────────────
 function selectMarket(code) {
@@ -424,7 +425,7 @@ function selectMarket(code) {
 function selectSig(type) {
     _sigType = type;
     document.querySelectorAll('.bt-nav-item').forEach(function(el, i) {
-        var types = ['builtin','nl','code','manual'];
+        var types = ['builtin','nl','manual'];
         el.classList.toggle('active', types[i] === type);
     });
     document.querySelectorAll('.bt-pane').forEach(function(p) {
@@ -474,9 +475,6 @@ function renderBuiltinPills(tf) {
         container.appendChild(btn);
     });
 
-    // Select first by default
-    var first = container.querySelector('.strategy-pill');
-    if (first) toggleBuiltin(first);
 }
 
 function toggleBuiltin(btn) {
@@ -484,6 +482,8 @@ function toggleBuiltin(btn) {
     var idx  = _selectedBuiltins.indexOf(name);
     if (idx === -1) { _selectedBuiltins.push(name); btn.classList.add('active'); }
     else            { _selectedBuiltins.splice(idx, 1); btn.classList.remove('active'); }
+    try { sessionStorage.removeItem('bt_preview'); } catch(e) {}
+    document.getElementById('preview-panel').style.display = 'none';
 }
 
 // ── Data ref toggle ───────────────────────────────────────────────────────────
@@ -494,42 +494,155 @@ function toggleRef(id) {
     if (arrow) arrow.innerHTML = open ? '&#9650;' : '&#9660;';
 }
 
-// ── Generate / Validate ───────────────────────────────────────────────────────
-function generateCode() {
-    var desc = document.getElementById('nl-description').value.trim();
-    if (!desc) { showStatus('nl-status', 'err', 'Please enter a description.'); return; }
-    showStatus('nl-status', 'info', 'Generating...');
-    document.getElementById('nl-code-wrap').style.display = 'none';
+// ── Natural Language signals ───────────────────────────────────────────────────
+var _nlSignals = [];   // [{id, description, code, explanation}]
+var _nlIdSeq   = 0;
+
+function _nlId()  { return ++_nlIdSeq; }
+
+function saveNlSignals() {
+    // _nlSignals is source of truth — only sync name/description from DOM (safe, always present)
+    // Code is NEVER read from DOM here; it's updated directly in _nlSignals by generateNlCode / syncNlCode
+    _nlSignals.forEach(function(sig) {
+        var nameEl = document.getElementById('nl-name-' + sig.id);
+        var descEl = document.getElementById('nl-desc-' + sig.id);
+        if (nameEl) sig.name        = nameEl.value;
+        if (descEl) sig.description = descEl.value;
+    });
+    try { sessionStorage.setItem('bt_nl_signals', JSON.stringify(_nlSignals)); } catch(e) {}
+}
+
+// Called by oninput on the code textarea — syncs edits back to state
+function syncNlCode(id) {
+    var sig    = _nlSignals.find(function(s){ return s.id === id; });
+    var codeEl = document.getElementById('nl-code-' + id);
+    if (sig && codeEl) sig.code = codeEl.value;
+    saveNlSignals();
+}
+
+function initNlSignals() {
+    try {
+        var saved = sessionStorage.getItem('bt_nl_signals');
+        if (saved) {
+            _nlSignals = JSON.parse(saved);
+            // Restore id counter so new signals don't collide
+            _nlSignals.forEach(function(s){ if (s.id >= _nlIdSeq) _nlIdSeq = s.id; });
+            renderNlSignals();
+            return;
+        }
+    } catch(e) {}
+    _nlSignals = [{id: _nlId(), name: '', description: '', code: '', explanation: ''}];
+    renderNlSignals();
+}
+
+function addNlSignal() {
+    saveNlSignals();
+    _nlSignals.push({id: _nlId(), name: '', description: '', code: '', explanation: ''});
+    renderNlSignals();
+    saveNlSignals();
+}
+
+function removeNlSignal(id) {
+    saveNlSignals();
+    _nlSignals = _nlSignals.filter(function(s){ return s.id !== id; });
+    renderNlSignals();
+    saveNlSignals();
+}
+
+function renderNlSignals() {
+    var container = document.getElementById('nl-signals-container');
+    if (!container) return;
+    container.innerHTML = '';
+    _nlSignals.forEach(function(sig, idx) {
+        var card = document.createElement('div');
+        card.className = 'nl-card';
+        card.id = 'nl-card-' + sig.id;
+        card.innerHTML =
+            '<div class="nl-card-header">'
+            + '<input id="nl-name-' + sig.id + '" type="text" value="' + esc(sig.name) + '"'
+            + ' placeholder="Signal name (e.g. Momentum Filter)"'
+            + ' oninput="saveNlSignals()"'
+            + ' style="flex:1;font-size:12px;background:transparent;border:none;border-bottom:1px solid #30363d;'
+            + 'color:#c9d1d9;padding:2px 4px;outline:none;width:220px;" />'
+            + '<button class="btn-remove" onclick="removeNlSignal(' + sig.id + ')">− Remove</button>'
+            + '</div>'
+            + '<div style="display:flex;gap:8px;align-items:flex-start;margin-top:8px;">'
+            + '<textarea id="nl-desc-' + sig.id + '" rows="2"'
+            + ' style="flex:1;font-size:13px;background:#161b22;border:1px solid #30363d;color:#c9d1d9;padding:8px;border-radius:6px;resize:vertical;"'
+            + ' placeholder="e.g. select top 10 stocks by 20-day momentum with volume above average"'
+            + ' oninput="saveNlSignals()">'
+            + esc(sig.description) + '</textarea>'
+            + '<button class="btn btn-magic" onclick="generateNlCode(' + sig.id + ')">&#10024; Generate</button>'
+            + '</div>'
+            + '<div id="nl-status-' + sig.id + '" class="inline-status"></div>'
+            + (sig.code
+                ? '<div id="nl-code-wrap-' + sig.id + '" style="margin-top:10px;">'
+                  + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
+                  + '<span style="font-size:11px;color:#6e7681;">Generated code</span>'
+                  + '<button class="btn btn-validate btn-sm" onclick="validateNlCode(' + sig.id + ')">&#10003; Validate</button>'
+                  + '</div>'
+                  + '<textarea class="code-editor" id="nl-code-' + sig.id + '" rows="8" oninput="syncNlCode(' + sig.id + ')">' + esc(sig.code) + '</textarea>'
+                  + '<div id="nl-val-' + sig.id + '" class="inline-status"></div>'
+                  + '</div>'
+                : '<div id="nl-code-wrap-' + sig.id + '" style="display:none;margin-top:10px;">'
+                  + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
+                  + '<span style="font-size:11px;color:#6e7681;">Generated code</span>'
+                  + '<button class="btn btn-validate btn-sm" onclick="validateNlCode(' + sig.id + ')">&#10003; Validate</button>'
+                  + '</div>'
+                  + '<textarea class="code-editor" id="nl-code-' + sig.id + '" rows="8" oninput="syncNlCode(' + sig.id + ')"></textarea>'
+                  + '<div id="nl-val-' + sig.id + '" class="inline-status"></div>'
+                  + '</div>');
+        container.appendChild(card);
+    });
+}
+
+function generateNlCode(id) {
+    var sig  = _nlSignals.find(function(s){ return s.id === id; });
+    if (!sig) return;
+    var desc = document.getElementById('nl-desc-' + id).value.trim();
+    if (!desc) { showStatus('nl-status-' + id, 'err', 'Please enter a description.'); return; }
+    sig.description = desc;
+    showStatus('nl-status-' + id, 'info', 'Generating...');
+    document.getElementById('nl-code-wrap-' + id).style.display = 'none';
     fetch('/api/backtest/generate-signal', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({description: desc})
     })
     .then(function(r){ return r.json(); })
     .then(function(data) {
-        if (!data.success) { showStatus('nl-status', 'err', data.error || 'Error'); return; }
-        showStatus('nl-status', 'ok', data.explanation || 'Code generated.');
-        document.getElementById('nl-code').value = data.code;
-        document.getElementById('nl-code-wrap').style.display = 'block';
+        if (!data.success) { showStatus('nl-status-' + id, 'err', data.error || 'Error'); return; }
+        sig.code = data.code;
+        sig.explanation = data.explanation;
+        showStatus('nl-status-' + id, 'ok', data.explanation || 'Code generated.');
+        var wrap = document.getElementById('nl-code-wrap-' + id);
+        document.getElementById('nl-code-' + id).value = data.code;
+        wrap.style.display = 'block';
+        saveNlSignals();
+        // Invalidate stale preview — new code means old preview results are outdated
+        try { sessionStorage.removeItem('bt_preview'); } catch(e) {}
+        document.getElementById('preview-panel').style.display = 'none';
     })
-    .catch(function(e){ showStatus('nl-status', 'err', e.message); });
+    .catch(function(e){ showStatus('nl-status-' + id, 'err', e.message); });
 }
 
-function validateCode(src) {
-    var code = src === 'nl' ? document.getElementById('nl-code').value : document.getElementById('manual-code').value;
-    var sid  = src === 'nl' ? 'nl-validate-status' : 'code-validate-status';
-    if (!code.trim()) { showStatus(sid, 'err', 'No code to validate.'); return; }
-    showStatus(sid, 'info', 'Validating...');
+function validateNlCode(id) {
+    var code = document.getElementById('nl-code-' + id).value.trim();
+    if (!code) { showStatus('nl-val-' + id, 'err', 'No code to validate.'); return; }
+    // Sync back to state
+    var sig = _nlSignals.find(function(s){ return s.id === id; });
+    if (sig) sig.code = code;
+    showStatus('nl-val-' + id, 'info', 'Validating...');
     fetch('/api/backtest/validate-signal', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({code: code, market: _market})
     })
     .then(function(r){ return r.json(); })
     .then(function(data) {
-        if (!data.valid) { showStatus(sid, 'err', data.error || 'Invalid'); return; }
+        if (!data.valid) { showStatus('nl-val-' + id, 'err', data.error || 'Invalid'); return; }
         var t = (data.tickers||[]).slice(0,5).join(', ');
-        showStatus(sid, 'ok', '\u2713 Works' + (t ? ' \u2014 ' + t + (data.tickers.length>5?', ...':'') : ''));
+        showStatus('nl-val-' + id, 'ok', '\u2713 Works' + (t ? ' \u2014 ' + t + (data.tickers.length>5?', ...':'') : ''));
     })
-    .catch(function(e){ showStatus(sid, 'err', e.message); });
+    .catch(function(e){ showStatus('nl-val-' + id, 'err', e.message); });
 }
 
 function showStatus(id, type, msg) {
@@ -565,9 +678,29 @@ function renderTickerList() {
 }
 
 // ── Preview signal ────────────────────────────────────────────────────────────
+function collectAllSignals() {
+    var signals = [];
+    if (_selectedBuiltins.length > 0)
+        signals.push({type: 'builtin', name: _selectedBuiltins.slice(), label: 'Built-in'});
+    // Sync NL name + code from inputs before collecting
+    _nlSignals.forEach(function(sig, idx) {
+        var nameEl = document.getElementById('nl-name-' + sig.id);
+        if (nameEl) sig.name = nameEl.value.trim();
+        var ta = document.getElementById('nl-code-' + sig.id);
+        if (ta) sig.code = ta.value.trim();
+        if (sig.code) {
+            var label = sig.name || ('NL Signal ' + (idx + 1));
+            signals.push({type: 'code', code: sig.code, label: label});
+        }
+    });
+    if (_tickers.length > 0)
+        signals.push({type: 'custom_tickers', tickers: _tickers.slice(), label: 'Ticker List'});
+    return signals;
+}
+
 function previewSignal() {
-    var payload = buildSignalPayload();
-    if (!payload) return;
+    var signals = collectAllSignals();
+    if (!signals.length) { alert('Select at least one strategy, write a signal, or add tickers.'); return; }
 
     var panel = document.getElementById('preview-panel');
     var list  = document.getElementById('preview-list');
@@ -583,11 +716,7 @@ function previewSignal() {
 
     fetch('/api/backtest/preview', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            market:          _market,
-            universe_source: payload.universe_source,
-            signal:          payload.signal,
-        })
+        body: JSON.stringify({market: _market, signals: signals})
     })
     .then(function(r){ return r.json(); })
     .then(function(data) {
@@ -595,37 +724,12 @@ function previewSignal() {
             list.innerHTML = '';
             err.textContent = data.error; err.style.display = 'block'; return;
         }
-        count.textContent = data.count;
-        meta.textContent = 'based on latest available data';
         if (!data.tickers || !data.tickers.length) {
-            list.innerHTML = '<span style="color:#6e7681;font-size:12px;">No stocks selected by this signal</span>';
-            return;
+            sessionStorage.removeItem('bt_preview');
+        } else {
+            try { sessionStorage.setItem('bt_preview', JSON.stringify(data)); } catch(e) {}
         }
-        // Determine if multi-strategy (show Signals column when any stock has signal_count > 1)
-        var hasMulti = data.tickers.some(function(t){ return (t.signal_count||1) > 1; });
-        var showStrategies = data.tickers.some(function(t){ return t.strategies && t.strategies.length; });
-        var html = '<table class="preview-table"><thead><tr>'
-            + '<th>Ticker</th><th>Name</th><th>Sector</th>'
-            + (showStrategies ? '<th>Strategy</th>' : '')
-            + (hasMulti ? '<th>Signals</th>' : '')
-            + '</tr></thead><tbody>';
-        data.tickers.forEach(function(t) {
-            var multi = (t.signal_count||1) > 1;
-            var dots = '';
-            if (hasMulti) {
-                for (var i=0; i<(t.signal_count||1); i++) dots += '●';
-            }
-            var stratLabel = (t.strategies||[]).join(', ');
-            html += '<tr class="' + (multi ? 'multi-signal' : '') + '">'
-                + '<td><span class="pt-ticker">' + esc(t.ticker) + '</span></td>'
-                + '<td><span class="pt-name">' + esc(t.name||'') + '</span></td>'
-                + '<td><span class="pt-sector">' + esc(t.sector||'') + '</span></td>'
-                + (showStrategies ? '<td><span class="pt-strategy">' + esc(stratLabel) + '</span></td>' : '')
-                + (hasMulti ? '<td><span class="pt-signals" title="' + t.signal_count + ' strategies">' + dots + '</span></td>' : '')
-                + '</tr>';
-        });
-        html += '</tbody></table>';
-        list.innerHTML = html;
+        renderPreviewData(data);
     })
     .catch(function(e) {
         list.innerHTML = '';
@@ -633,23 +737,80 @@ function previewSignal() {
     });
 }
 
+function renderPreviewData(data) {
+    var panel = document.getElementById('preview-panel');
+    var list  = document.getElementById('preview-list');
+    var count = document.getElementById('preview-count');
+    var meta  = document.getElementById('preview-meta');
+
+    panel.style.display = 'block';
+    count.textContent = data.count || 0;
+    meta.textContent = data.signal_date ? 'as of ' + data.signal_date : 'latest cached data';
+
+    if (!data.tickers || !data.tickers.length) {
+        list.innerHTML = '<span style="color:#6e7681;font-size:12px;">No stocks selected by current signals</span>';
+        return;
+    }
+    var hasMulti = data.tickers.some(function(t){ return (t.signal_count||1) > 1; });
+    var html = '<table class="preview-table"><thead><tr>'
+        + '<th>Ticker</th><th>Name</th><th>Sector</th><th>Signal</th>'
+        + (hasMulti ? '<th></th>' : '')
+        + '</tr></thead><tbody>';
+    data.tickers.forEach(function(t) {
+        var multi = (t.signal_count||1) > 1;
+        var dots = '';
+        if (hasMulti) { for (var i=0; i<(t.signal_count||1); i++) dots += '●'; }
+        var stratLabel = (t.strategies||[]).join(', ');
+        html += '<tr class="' + (multi ? 'multi-signal' : '') + '">'
+            + '<td><span class="pt-ticker">' + esc(t.ticker) + '</span></td>'
+            + '<td><span class="pt-name">' + esc(t.name||'') + '</span></td>'
+            + '<td><span class="pt-sector">' + esc(t.sector||'') + '</span></td>'
+            + '<td><span class="pt-strategy">' + esc(stratLabel||'—') + '</span></td>'
+            + (hasMulti ? '<td><span class="pt-signals" title="selected by ' + t.signal_count + ' signals">' + dots + '</span></td>' : '')
+            + '</tr>';
+    });
+    html += '</tbody></table>';
+    list.innerHTML = html;
+}
+
+function restoreResults() {
+    try {
+        var saved = JSON.parse(sessionStorage.getItem('bt_results') || '{}');
+        Object.keys(saved).forEach(function(tf) {
+            var entry = saved[tf];
+            renderResult(tf, entry.data);
+            if (entry.info) document.getElementById('run-info').textContent = entry.info;
+            setStatus('done', 'Done');
+            // Also restore detail breakdown
+            if (entry.payload) runStrategyDetails(tf, entry.payload, entry.indivSignals || null);
+        });
+    } catch(e) {}
+}
+
+function restorePreview() {
+    try {
+        var saved = sessionStorage.getItem('bt_preview');
+        if (saved) renderPreviewData(JSON.parse(saved));
+    } catch(e) {}
+}
+
 // Extract just the signal/universe from current state (shared by preview + run)
 function buildSignalPayload() {
-    var universeSource, signal;
+    var universeSource = {type: 'market'}, signal;
     if (_sigType === 'builtin') {
         if (!_selectedBuiltins.length) { alert('Select at least one strategy.'); return null; }
-        universeSource = {type: 'market'};
         signal = {type: 'builtin', name: _selectedBuiltins.length === 1 ? _selectedBuiltins[0] : _selectedBuiltins};
     } else if (_sigType === 'nl') {
-        var code = document.getElementById('nl-code').value.trim();
-        if (!code) { alert('Please generate the code first.'); return null; }
-        universeSource = {type: 'market'};
-        signal = {type: 'code', code: code};
-    } else if (_sigType === 'code') {
-        var code = document.getElementById('manual-code').value.trim();
-        if (!code) { alert('Please write a select() function first.'); return null; }
-        universeSource = {type: 'market'};
-        signal = {type: 'code', code: code};
+        var nlCodes = [];
+        _nlSignals.forEach(function(sig) {
+            var ta = document.getElementById('nl-code-' + sig.id);
+            if (ta) sig.code = ta.value.trim();
+            if (sig.code) nlCodes.push(sig.code);
+        });
+        if (!nlCodes.length) { alert('Please generate at least one NL signal first.'); return null; }
+        signal = nlCodes.length === 1
+            ? {type: 'code', code: nlCodes[0]}
+            : {type: 'multi_code', codes: nlCodes};
     } else {
         if (!_tickers.length) { alert('Add at least one ticker.'); return null; }
         universeSource = {type: 'custom', tickers: _tickers};
@@ -690,6 +851,15 @@ function runBacktest(force) {
         var dt = data.generated_at ? new Date(data.generated_at).toLocaleString() : '';
         document.getElementById('run-info').textContent = dt + (data.duration_s ? ' ('+data.duration_s+'s)' : '');
         setStatus('done', 'Done');
+        // Persist result so refresh restores it
+        var indivSignals = collectIndividualSignals();
+        try {
+            var saved = JSON.parse(sessionStorage.getItem('bt_results') || '{}');
+            saved[_activeTf] = {data: data, info: document.getElementById('run-info').textContent, payload: payload, indivSignals: indivSignals};
+            sessionStorage.setItem('bt_results', JSON.stringify(saved));
+        } catch(e) {}
+        // Run per-strategy detail in background
+        runStrategyDetails(_activeTf, payload, indivSignals);
     })
     .catch(function(e){ setStatus('error', e.message); });
 }
@@ -766,16 +936,58 @@ function renderTrades(tf, trades) {
     var tbody = document.getElementById('trades-body-'+tf);
     var count = document.getElementById('trades-count-'+tf);
     if (count) count.textContent = trades.length;
-    if (!trades.length) { tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:#6e7681;padding:16px;">No trades recorded</td></tr>'; return; }
+    if (!trades.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#6e7681;padding:16px;">No trades recorded</td></tr>';
+        return;
+    }
+
+    // Group by ticker, sort by avg P&L desc
+    var groups = {};
+    trades.forEach(function(t) {
+        if (!groups[t.ticker]) groups[t.ticker] = {name: t.name||'', trades: []};
+        groups[t.ticker].trades.push(t);
+    });
+    var tickers = Object.keys(groups).sort(function(a, b) {
+        var avgA = groups[a].trades.reduce(function(s,t){ return s+t.pnl_pct; }, 0) / groups[a].trades.length;
+        var avgB = groups[b].trades.reduce(function(s,t){ return s+t.pnl_pct; }, 0) / groups[b].trades.length;
+        return avgB - avgA;
+    });
+
     var html = '';
-    trades.slice().reverse().slice(0,100).forEach(function(t) {
-        var p=(t.pnl_pct*100).toFixed(2), cls=t.pnl_pct>=0?'pnl-pos':'pnl-neg';
-        html+='<tr><td>'+t.ticker+'</td><td>'+(t.entry_date||'')+'</td><td>'+(t.exit_date||'')+'</td>'
-             +'<td>'+(t.entry_price!=null?t.entry_price.toFixed(4):'\u2014')+'</td>'
-             +'<td>'+(t.exit_price !=null?t.exit_price.toFixed(4) :'\u2014')+'</td>'
-             +'<td class="'+cls+'">'+(t.pnl_pct>=0?'+':'')+p+'%</td></tr>';
+    tickers.forEach(function(ticker) {
+        var g    = groups[ticker];
+        var n    = g.trades.length;
+        var avg  = g.trades.reduce(function(s,t){ return s+t.pnl_pct; }, 0) / n;
+        var wins = g.trades.filter(function(t){ return t.pnl_pct>0; }).length;
+        var cls  = avg>=0 ? 'pnl-pos' : 'pnl-neg';
+        var key  = ticker.replace(/[^a-z0-9]/gi,'_');
+        // Header row — click to expand/collapse
+        html += '<tr style="background:#1c2128;cursor:pointer;" onclick="toggleTickerGroup(\''+tf+'\',\''+key+'\')">'
+              + '<td style="font-family:monospace;font-weight:600;">'+ticker+'</td>'
+              + '<td style="color:#8b949e;font-size:11px;">'+esc(g.name)+'</td>'
+              + '<td style="color:#6e7681;font-size:11px;" colspan="2">'+n+' trades &nbsp;·&nbsp; '+wins+' wins</td>'
+              + '<td colspan="2"></td>'
+              + '<td class="'+cls+'" style="font-weight:600;">'+(avg>=0?'+':'')+(avg*100).toFixed(2)+'% avg</td>'
+              + '</tr>';
+        // Individual trades (collapsed by default)
+        g.trades.forEach(function(t) {
+            var p = (t.pnl_pct*100).toFixed(2), tc = t.pnl_pct>=0?'pnl-pos':'pnl-neg';
+            html += '<tr class="tg-'+tf+'-'+key+'" style="display:none;background:#0d1117;">'
+                  + '<td></td>'
+                  + '<td style="color:#6e7681;font-size:11px;">'+esc(t.name||'')+'</td>'
+                  + '<td>'+(t.entry_date||'')+'</td><td>'+(t.exit_date||'')+'</td>'
+                  + '<td>'+(t.entry_price!=null?t.entry_price.toFixed(4):'\u2014')+'</td>'
+                  + '<td>'+(t.exit_price !=null?t.exit_price.toFixed(4) :'\u2014')+'</td>'
+                  + '<td class="'+tc+'">'+(t.pnl_pct>=0?'+':'')+p+'%</td></tr>';
+        });
     });
     tbody.innerHTML = html;
+}
+
+function toggleTickerGroup(tf, key) {
+    var rows = document.getElementsByClassName('tg-'+tf+'-'+key);
+    var show = rows.length > 0 && rows[0].style.display === 'none';
+    for (var i=0; i<rows.length; i++) rows[i].style.display = show ? '' : 'none';
 }
 
 function esc(s) {
@@ -793,13 +1005,134 @@ function clearResults(tf) {
         var el = document.getElementById('m-'+k+'-'+tf);
         if (el) { el.textContent='\u2014'; el.className='m-value'; }
     });
-    document.getElementById('trades-body-'+tf).innerHTML = '<tr><td colspan="6" style="text-align:center;color:#6e7681;padding:20px;">Run a backtest to see trades</td></tr>';
+    document.getElementById('trades-body-'+tf).innerHTML = '<tr><td colspan="7" style="text-align:center;color:#6e7681;padding:20px;">Run a backtest to see trades</td></tr>';
     var cnt = document.getElementById('trades-count-'+tf); if (cnt) cnt.textContent='';
     if (_charts[tf]) { _charts[tf].destroy(); _charts[tf]=null; }
     var cw = document.getElementById('chart-wrap-'+tf); if (cw) cw.style.display='none';
     if (tf==='yearly') {
         if (_cohortChart) { _cohortChart.destroy(); _cohortChart=null; }
         var cc = document.getElementById('cohort-chart-wrap'); if (cc) cc.style.display='none';
+    }
+    // Clear per-strategy detail cards but keep section visible
+    var dc = document.getElementById('strategy-cards-'+tf); if (dc) dc.innerHTML='';
+    var dl = document.getElementById('detail-loading-'+tf); if (dl) dl.style.display='none';
+    var dct = document.getElementById('detail-count-'+tf); if (dct) dct.textContent='';
+    Object.keys(_detailCharts).forEach(function(k){ if (k.indexOf(tf+'__')===0){ _detailCharts[k].destroy(); delete _detailCharts[k]; } });
+}
+
+// ── Per-strategy breakdown ─────────────────────────────────────────────────────
+var _detailCharts = {};
+
+function toggleDetail(tf) {
+    var toggle = document.getElementById('detail-toggle-'+tf);
+    var body   = document.getElementById('detail-body-'+tf);
+    var isOpen = body.classList.contains('open');
+    if (isOpen) {
+        body.classList.remove('open');
+        toggle.classList.remove('open');
+    } else {
+        body.classList.add('open');
+        toggle.classList.add('open');
+    }
+}
+
+// Collect individual signals (one per strategy / NL signal / ticker list)
+function collectIndividualSignals() {
+    var signals = [];
+    if (_sigType === 'builtin') {
+        _selectedBuiltins.forEach(function(name) {
+            signals.push({ label: name.replace(/_/g,' '), universe_source: {type:'market'}, signal: {type:'builtin', name: name} });
+        });
+    } else if (_sigType === 'nl') {
+        _nlSignals.forEach(function(sig, idx) {
+            var ta = document.getElementById('nl-code-' + sig.id);
+            var code = ta ? ta.value.trim() : (sig.code || '');
+            if (code) {
+                signals.push({ label: sig.name || ('NL Signal '+(idx+1)), universe_source: {type:'market'}, signal: {type:'code', code: code} });
+            }
+        });
+    } else if (_sigType === 'manual' && _tickers.length) {
+        signals.push({ label: 'Ticker List', universe_source: {type:'custom', tickers:_tickers.slice()}, signal: {type:'builtin', name:'yearly_momentum_252d'} });
+    }
+    return signals;
+}
+
+function runStrategyDetails(tf, basePayload, indivSignals) {
+    if (!indivSignals) indivSignals = collectIndividualSignals();
+    if (!indivSignals.length) return;
+
+    var loading = document.getElementById('detail-loading-'+tf);
+    var countEl = document.getElementById('detail-count-'+tf);
+    var cardsEl = document.getElementById('strategy-cards-'+tf);
+
+    loading.style.display = 'inline';
+    countEl.textContent = '';
+    cardsEl.innerHTML = '';
+
+    var done = 0;
+    indivSignals.forEach(function(spec, idx) {
+        var payload = Object.assign({}, basePayload, { universe_source: spec.universe_source, signal: spec.signal, force: false });
+        fetch('/api/backtest/run', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(data) {
+            done++;
+            renderStrategyCard(tf, idx, spec.label, data);
+            if (done === indivSignals.length) {
+                loading.style.display = 'none';
+                countEl.textContent = indivSignals.length;
+            }
+        })
+        .catch(function() {
+            done++;
+            if (done === indivSignals.length) loading.style.display = 'none';
+        });
+    });
+}
+
+function renderStrategyCard(tf, idx, label, data) {
+    var cardsEl = document.getElementById('strategy-cards-'+tf);
+    if (!cardsEl) return;
+    var m = data.metrics || {};
+    function pct(v) { return v==null||isNaN(v) ? '—' : (v*100).toFixed(2)+'%'; }
+    function fmt2(v){ return v==null||isNaN(v) ? '—' : v.toFixed(2); }
+    function cls(v, good) { return v==null||isNaN(v)?'' : (good ? (v>0?'up':'down') : (v<0?'up':'down')); }
+
+    var canvasId = 'sc-chart-'+tf+'--'+idx;
+    var card = document.createElement('div');
+    card.className = 'strategy-card';
+    card.innerHTML =
+        '<div class="sc-name" title="'+esc(label)+'">'+esc(label)+'</div>'
+       +'<div class="sc-metrics">'
+       +'  <div class="sc-m"><div class="sc-ml">Total Ret</div><div class="sc-mv '+cls(m.total_return,true)+'">'+pct(m.total_return)+'</div></div>'
+       +'  <div class="sc-m"><div class="sc-ml">CAGR</div><div class="sc-mv '+cls(m.cagr,true)+'">'+pct(m.cagr)+'</div></div>'
+       +'  <div class="sc-m"><div class="sc-ml">Sharpe</div><div class="sc-mv '+cls(m.sharpe,true)+'">'+fmt2(m.sharpe)+'</div></div>'
+       +'  <div class="sc-m"><div class="sc-ml">Max DD</div><div class="sc-mv down">'+pct(m.max_drawdown)+'</div></div>'
+       +'</div>'
+       +'<canvas id="'+canvasId+'" height="90"></canvas>';
+    cardsEl.appendChild(card);
+
+    // Draw mini chart
+    if (data.equity_curve && data.equity_curve.length > 1) {
+        var curve = data.equity_curve;
+        var labels = curve.map(function(p){ return p[0]; });
+        var values = curve.map(function(p){ return p[1]; });
+        var sv = values[0]||1;
+        var lineColor = values[values.length-1] >= sv ? '#3fb950' : '#f85149';
+        var ctx = document.getElementById(canvasId).getContext('2d');
+        _detailCharts[tf+'__'+idx] = new Chart(ctx, {
+            type: 'line',
+            data: { labels: labels, datasets: [{ data: values, borderColor: lineColor, borderWidth: 1.5, pointRadius: 0, fill: {target:'origin', above: lineColor+'22'}, tension: 0.1 }] },
+            options: { responsive:true, maintainAspectRatio:true, animation:false,
+                plugins: { legend:{display:false}, tooltip:{ mode:'index', intersect:false, callbacks:{ label:function(c){ var v=c.parsed.y,p=((v/sv-1)*100).toFixed(2); return (p>=0?'+':'')+p+'%'; }}}},
+                scales: {
+                    x: { display:false },
+                    y: { ticks:{color:'#6e7681',font:{size:10}, callback:function(v){ return (v/sv*100-100).toFixed(0)+'%'; }}, grid:{color:'#21262d'} }
+                }
+            }
+        });
     }
 }
 </script>
