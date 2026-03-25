@@ -43,9 +43,10 @@ from src.common.logger import get_logger
 
 log = get_logger("backtest.engine")
 
-COMMISSION      = 0.001   # 0.1% per leg
-INITIAL_EQUITY  = 1_000_000.0
-CACHE_TTL_HOURS = 24
+COMMISSION          = 0.001   # 0.1% per leg
+INITIAL_EQUITY      = 1_000_000.0
+CACHE_TTL_HOURS     = 24       # TTL for recent backtests (end_date near today)
+CACHE_TTL_HIST_DAYS = 30       # TTL for historical backtests (end_date clearly in the past)
 
 # How many years of history to use per timeframe
 _HISTORY_YEARS = {
@@ -85,16 +86,26 @@ def _result_path(market: str, timeframe: str, cache_key: str) -> str:
     return get_data_path("backtest", "results", market, timeframe, f"{cache_key}.json")
 
 
-def _is_fresh(path: str) -> bool:
+def _is_fresh(path: str, end_date: str = "") -> bool:
     if not os.path.exists(path):
         return False
     age = datetime.now() - datetime.fromtimestamp(os.path.getmtime(path))
+    # Historical backtests (end_date clearly in the past) use a much longer TTL
+    # so results don't shift between days due to adjusted-price updates.
+    if end_date:
+        try:
+            end_ts = datetime.strptime(end_date, "%Y-%m-%d")
+            if end_ts < datetime.now() - timedelta(days=7):
+                return age < timedelta(days=CACHE_TTL_HIST_DAYS)
+        except ValueError:
+            pass
     return age < timedelta(hours=CACHE_TTL_HOURS)
 
 
-def load_cached_result(market: str, timeframe: str, cache_key: str) -> Optional[dict]:
+def load_cached_result(market: str, timeframe: str, cache_key: str,
+                       end_date: str = "") -> Optional[dict]:
     path = _result_path(market, timeframe, cache_key)
-    if _is_fresh(path):
+    if _is_fresh(path, end_date):
         try:
             with open(path) as f:
                 return json.load(f)
@@ -172,8 +183,9 @@ def _build_signal_fn(signal: dict, timeframe: str) -> Callable:
         return fn
 
     elif stype == "multi_code":
-        # Union of multiple code signals (for multiple NL signals)
+        # Union or intersection of multiple code signals (for multiple NL signals)
         codes = signal.get("codes", [])
+        mode  = signal.get("mode", "union")   # "union" | "intersect"
         if not codes:
             raise ValueError("signal type 'multi_code' requires 'codes' list")
         from src.backtest.signal_builder import safe_compile
@@ -183,16 +195,25 @@ def _build_signal_fn(signal: dict, timeframe: str) -> Callable:
             if fn is None:
                 raise ValueError(f"Signal code compilation failed: {err}")
             fns.append(fn)
-        def _multi_combined(universe_df, history, date):
-            seen: set = set()
-            result = []
-            for fn in fns:
-                for tk in fn(universe_df, history, date):
-                    if tk not in seen:
-                        seen.add(tk)
-                        result.append(tk)
-            return result
-        return _multi_combined
+        if mode == "intersect":
+            def _multi_intersect(universe_df, history, date, _fns=fns):
+                sets = [set(fn(universe_df, history, date)) for fn in _fns]
+                common = sets[0].intersection(*sets[1:]) if sets else set()
+                # Preserve order from first signal
+                first = [tk for tk in _fns[0](universe_df, history, date) if tk in common]
+                return first
+            return _multi_intersect
+        else:
+            def _multi_union(universe_df, history, date, _fns=fns):
+                seen: set = set()
+                result = []
+                for fn in _fns:
+                    for tk in fn(universe_df, history, date):
+                        if tk not in seen:
+                            seen.add(tk)
+                            result.append(tk)
+                return result
+            return _multi_union
 
     else:
         raise ValueError(f"Unknown signal type {stype!r}")
@@ -299,7 +320,7 @@ def _run_yearly_mode(
 
         # History up to as_of_date for signal generation
         as_of_ts = pd.Timestamp(as_of)
-        year_history = {tk: df[df["date"] < as_of_ts] for tk, df in history.items()}
+        year_history = {tk: df[df["date"] < as_of_ts].copy() for tk, df in history.items()}
 
         # Signal: select stocks at start of year
         try:
@@ -411,7 +432,7 @@ def run_backtest(
     cache_key = _make_cache_key(market, timeframe, universe_source, signal, start_date, end_date)
 
     if not force:
-        cached = load_cached_result(market, timeframe, cache_key)
+        cached = load_cached_result(market, timeframe, cache_key, end_date)
         if cached is not None:
             log.info(f"[{market}/{timeframe}] Returning cached result (key={cache_key})")
             return cached
@@ -530,7 +551,10 @@ def run_backtest(
 
             # ── Generate signal ──────────────────────────────────────────────
             # Pre-filter history to <= signal_date to prevent any look-ahead
-            signal_history = {tk: df[df["date"] <= signal_date] for tk, df in history.items()}
+            # .copy() is critical — without it, pandas may return a view and any
+            # mutations inside select() would corrupt the master history dict,
+            # causing different stocks to be selected on every run.
+            signal_history = {tk: df[df["date"] <= signal_date].copy() for tk, df in history.items()}
             new_tickers = signal_fn(universe_df, signal_history, signal_date)
 
             # ── Close positions not in new portfolio (at exec_date open) ─────

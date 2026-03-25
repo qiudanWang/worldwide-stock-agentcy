@@ -2454,7 +2454,7 @@ def api_backtest_status(market, timeframe):
     end_date        = request.args.get("end_date", "2024-12-31")
     cache_key       = _make_cache_key(market.upper(), timeframe.lower(), universe_source, signal, start_date, end_date)
 
-    result = load_cached_result(market.upper(), timeframe.lower(), cache_key)
+    result = load_cached_result(market.upper(), timeframe.lower(), cache_key, end_date)
     if result is None:
         return jsonify({"cached": False}), 404
     return jsonify({

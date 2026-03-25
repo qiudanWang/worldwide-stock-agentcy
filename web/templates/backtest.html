@@ -130,6 +130,7 @@
 .inline-status.ok   { background: #132f1e; color: #3fb950; border: 1px solid #2ea043; }
 .inline-status.err  { background: #3d1a1a; color: #f85149; border: 1px solid #f85149; }
 .inline-status.info { background: #1c3a5e; color: #58a6ff; border: 1px solid #58a6ff; }
+.inline-status.warn { background: #2d1f00; color: #e3b341; border: 1px solid #e3b341; }
 
 .data-ref { background: #0d1117; border: 1px solid #21262d; border-radius: 6px; font-size: 11px; margin-bottom: 12px; overflow: hidden; }
 .data-ref-title { padding: 6px 10px; color: #6e7681; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 5px; }
@@ -151,6 +152,25 @@
     font-size: 12px; line-height: 1; padding: 0;
 }
 .ticker-tag button:hover { color: #f85149; }
+
+/* ── Backtest disclaimer ─────────────────────────────────────────────────── */
+.bt-disclaimer {
+    background: #161b22; border: 1px solid #d29922; border-radius: 8px;
+    margin-bottom: 16px; overflow: hidden; display: none;
+}
+.bt-disclaimer.visible { display: block; }
+.bt-disclaimer-header {
+    display: flex; align-items: center; gap: 8px; cursor: pointer;
+    padding: 10px 14px; user-select: none; font-size: 12px; color: #d29922;
+}
+.bt-disclaimer-header:hover { background: #21262d; }
+.bt-disclaimer-header .disc-arrow { font-size: 10px; transition: transform .2s; display: inline-block; }
+.bt-disclaimer-header.open .disc-arrow { transform: rotate(90deg); }
+.bt-disclaimer-body { display: none; padding: 0 14px 14px; }
+.bt-disclaimer-body.open { display: block; }
+.bt-disclaimer-body ul { margin: 8px 0 0 0; padding-left: 18px; }
+.bt-disclaimer-body li { font-size: 12px; color: #8b949e; margin-bottom: 7px; line-height: 1.5; }
+.bt-disclaimer-body li strong { color: #c9d1d9; }
 
 /* ── Results ─────────────────────────────────────────────────────────────── */
 .metrics-grid {
@@ -212,6 +232,10 @@
 .btn-remove { background: none; border: 1px solid #30363d; color: #6e7681; border-radius: 6px;
     font-size: 11px; padding: 2px 8px; cursor: pointer; transition: all .15s; }
 .btn-remove:hover { border-color: #f85149; color: #f85149; }
+.mode-pill { background: none; border: 1px solid #30363d; color: #6e7681; border-radius: 12px;
+    font-size: 11px; padding: 2px 10px; cursor: pointer; transition: all .15s; }
+.mode-pill.active { border-color: #58a6ff; color: #58a6ff; background: #132338; }
+.mode-pill:hover:not(.active) { border-color: #6e7681; color: #c9d1d9; }
 
 /* Results section only shows for active tf */
 .tf-result { display: none; }
@@ -283,7 +307,14 @@
                 </div>
             </div>
             <div id="nl-signals-container"></div>
-            <button class="btn btn-secondary" onclick="addNlSignal()" style="font-size:12px; margin-top:8px;">+ Add Signal</button>
+            <div style="display:flex; align-items:center; gap:12px; margin-top:8px;">
+                <button class="btn btn-secondary" onclick="addNlSignal()" style="font-size:12px;">+ Add Signal</button>
+                <span id="nl-combine-row" style="display:none; align-items:center; gap:6px; font-size:12px; color:#8b949e;">
+                    Combine:
+                    <button id="nl-mode-union"     class="mode-pill active" onclick="setNlMode('union')">Union</button>
+                    <button id="nl-mode-intersect" class="mode-pill"        onclick="setNlMode('intersect')">Intersect</button>
+                </span>
+            </div>
         </div>
 
         <!-- Ticker List -->
@@ -334,6 +365,34 @@
 <!-- ── Results (one block, switches with tf) ────────────────────────────── -->
 {% for tf in ['daily', 'weekly', 'monthly', 'yearly'] %}
 <div class="tf-result {{ 'active' if tf == 'daily' }}" id="result-{{ tf }}">
+
+    <!-- Backtest caveats — shown after results load -->
+    <div class="bt-disclaimer" id="disclaimer-{{ tf }}">
+        <div class="bt-disclaimer-header" id="disclaimer-hdr-{{ tf }}" onclick="toggleDisclaimer('{{ tf }}')">
+            <span class="disc-arrow">&#9658;</span>
+            <span>&#9888;&#xFE0F; Backtest Limitations — returns may be significantly overstated</span>
+        </div>
+        <div class="bt-disclaimer-body" id="disclaimer-body-{{ tf }}">
+            <ul>
+                <li><strong>Execution assumption:</strong> All trades assume fills at the next day's open price.
+                    In reality, stocks in a strong uptrend (e.g., CN limit-up / 涨停封板) often have no sellers at the open,
+                    making it impossible to enter at the assumed price. This is one of the largest sources of inflation in momentum-style backtests.</li>
+                <li><strong>No slippage or market impact:</strong> Only a fixed 0.1% commission per leg is deducted.
+                    Small- and micro-cap stocks (ChiNext 300xxx, STAR 688xxx, BSE 920xxx) typically have wide bid-ask spreads
+                    and thin order books — real-world transaction costs can be several times higher.</li>
+                <li><strong>CN market daily limits:</strong> A-share stocks have strict daily price limits
+                    (Main Board ±10%, ChiNext/STAR ±20%, BSE ±30%). A single stock hitting its limit-up adds up to 30% to
+                    the portfolio in one day. Over many rebalance periods this compounds dramatically.</li>
+                <li><strong>Survivorship bias:</strong> The stock universe is based on today's active listings.
+                    Companies that were delisted, suspended, or dropped significantly are excluded,
+                    slightly tilting the universe toward historical winners.</li>
+                <li><strong>Point-in-time data:</strong> Signals are computed on historical adjusted prices.
+                    Price adjustments for dividends and corporate actions are applied retroactively,
+                    which may create artificial-looking returns around ex-dividend or split dates.</li>
+                <li><strong>This is a simulation, not a forecast.</strong> Past backtested performance does not predict future results.</li>
+            </ul>
+        </div>
+    </div>
 
     <div class="metrics-grid">
         <div class="metric-card"><div class="m-label">Total Return</div><div class="m-value" id="m-totalret-{{ tf }}">—</div></div>
@@ -396,7 +455,9 @@ var _activeTf = 'daily';
 var _charts   = {};
 var _cohortChart = null;
 var _selectedBuiltins = [];
-var _tickers  = [];
+// Per-timeframe NL signals and ticker lists
+var _nlByTf = {daily:[], weekly:[], monthly:[], yearly:[]};
+var _tkByTf  = {daily:[], weekly:[], monthly:[], yearly:[]};
 
 // Default dates
 (function() {
@@ -442,8 +503,19 @@ function switchTf(tf) {
     document.querySelectorAll('.tf-result').forEach(function(r) {
         r.classList.toggle('active', r.id === 'result-' + tf);
     });
-    // Re-render built-in strategies for this timeframe
+    // Re-render built-in strategies, NL signals, and ticker list for this timeframe
     if (Object.keys(_allStrategies).length) renderBuiltinPills(tf);
+    renderNlSignals();
+    renderTickerList();
+    // Restore status + run-info for this timeframe
+    var s = _tfStatus[tf];
+    if (s) {
+        _applyStatus(s.state, s.text);
+        document.getElementById('run-info').textContent = s.info || '';
+    } else {
+        _applyStatus('', 'Not run');
+        document.getElementById('run-info').textContent = '';
+    }
     // Hide preview panel on timeframe switch
     document.getElementById('preview-panel').style.display = 'none';
 }
@@ -495,56 +567,63 @@ function toggleRef(id) {
 }
 
 // ── Natural Language signals ───────────────────────────────────────────────────
-var _nlSignals = [];   // [{id, description, code, explanation}]
-var _nlIdSeq   = 0;
+// _nlByTf[tf] is the source of truth for each timeframe's signals
+var _nlIdSeq  = 0;
+var _nlModeTf = {daily:'union', weekly:'union', monthly:'union', yearly:'union'};
 
-function _nlId()  { return ++_nlIdSeq; }
+function setNlMode(mode) {
+    _nlModeTf[_activeTf] = mode;
+    document.getElementById('nl-mode-union').classList.toggle('active', mode === 'union');
+    document.getElementById('nl-mode-intersect').classList.toggle('active', mode === 'intersect');
+}
+
+function _nlId() { return ++_nlIdSeq; }
 
 function saveNlSignals() {
-    // _nlSignals is source of truth — only sync name/description from DOM (safe, always present)
-    // Code is NEVER read from DOM here; it's updated directly in _nlSignals by generateNlCode / syncNlCode
-    _nlSignals.forEach(function(sig) {
+    // Only sync name/description from DOM; code is updated via syncNlCode / generateNlCode
+    _nlByTf[_activeTf].forEach(function(sig) {
         var nameEl = document.getElementById('nl-name-' + sig.id);
         var descEl = document.getElementById('nl-desc-' + sig.id);
         if (nameEl) sig.name        = nameEl.value;
         if (descEl) sig.description = descEl.value;
     });
-    try { sessionStorage.setItem('bt_nl_signals', JSON.stringify(_nlSignals)); } catch(e) {}
+    try { localStorage.setItem('bt_nl_' + _activeTf, JSON.stringify(_nlByTf[_activeTf])); } catch(e) {}
 }
 
 // Called by oninput on the code textarea — syncs edits back to state
 function syncNlCode(id) {
-    var sig    = _nlSignals.find(function(s){ return s.id === id; });
+    var sig    = _nlByTf[_activeTf].find(function(s){ return s.id === id; });
     var codeEl = document.getElementById('nl-code-' + id);
     if (sig && codeEl) sig.code = codeEl.value;
     saveNlSignals();
 }
 
 function initNlSignals() {
-    try {
-        var saved = sessionStorage.getItem('bt_nl_signals');
-        if (saved) {
-            _nlSignals = JSON.parse(saved);
-            // Restore id counter so new signals don't collide
-            _nlSignals.forEach(function(s){ if (s.id >= _nlIdSeq) _nlIdSeq = s.id; });
-            renderNlSignals();
-            return;
-        }
-    } catch(e) {}
-    _nlSignals = [{id: _nlId(), name: '', description: '', code: '', explanation: ''}];
+    // Load per-tf state from localStorage; init with one empty signal if nothing saved
+    ['daily','weekly','monthly','yearly'].forEach(function(tf) {
+        try {
+            var saved = localStorage.getItem('bt_nl_' + tf);
+            if (saved) {
+                _nlByTf[tf] = JSON.parse(saved);
+                _nlByTf[tf].forEach(function(s){ if (s.id >= _nlIdSeq) _nlIdSeq = s.id; });
+                return;
+            }
+        } catch(e) {}
+        _nlByTf[tf] = [{id: _nlId(), name: '', description: '', code: '', explanation: ''}];
+    });
     renderNlSignals();
 }
 
 function addNlSignal() {
     saveNlSignals();
-    _nlSignals.push({id: _nlId(), name: '', description: '', code: '', explanation: ''});
+    _nlByTf[_activeTf].push({id: _nlId(), name: '', description: '', code: '', explanation: ''});
     renderNlSignals();
     saveNlSignals();
 }
 
 function removeNlSignal(id) {
     saveNlSignals();
-    _nlSignals = _nlSignals.filter(function(s){ return s.id !== id; });
+    _nlByTf[_activeTf] = _nlByTf[_activeTf].filter(function(s){ return s.id !== id; });
     renderNlSignals();
     saveNlSignals();
 }
@@ -553,7 +632,16 @@ function renderNlSignals() {
     var container = document.getElementById('nl-signals-container');
     if (!container) return;
     container.innerHTML = '';
-    _nlSignals.forEach(function(sig, idx) {
+    // Show union/intersect toggle only when 2+ signals exist
+    var combineRow = document.getElementById('nl-combine-row');
+    if (combineRow) {
+        var hasMulti = _nlByTf[_activeTf].length >= 2;
+        combineRow.style.display = hasMulti ? 'flex' : 'none';
+        var mode = _nlModeTf[_activeTf] || 'union';
+        document.getElementById('nl-mode-union').classList.toggle('active', mode === 'union');
+        document.getElementById('nl-mode-intersect').classList.toggle('active', mode === 'intersect');
+    }
+    _nlByTf[_activeTf].forEach(function(sig, idx) {
         var card = document.createElement('div');
         card.className = 'nl-card';
         card.id = 'nl-card-' + sig.id;
@@ -597,12 +685,12 @@ function renderNlSignals() {
 }
 
 function generateNlCode(id) {
-    var sig  = _nlSignals.find(function(s){ return s.id === id; });
+    var sig  = _nlByTf[_activeTf].find(function(s){ return s.id === id; });
     if (!sig) return;
     var desc = document.getElementById('nl-desc-' + id).value.trim();
     if (!desc) { showStatus('nl-status-' + id, 'err', 'Please enter a description.'); return; }
     sig.description = desc;
-    showStatus('nl-status-' + id, 'info', 'Generating...');
+    showStatus('nl-status-' + id, 'info', 'Generating (up to ' + 3 + ' attempts)...');
     document.getElementById('nl-code-wrap-' + id).style.display = 'none';
     fetch('/api/backtest/generate-signal', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -613,7 +701,9 @@ function generateNlCode(id) {
         if (!data.success) { showStatus('nl-status-' + id, 'err', data.error || 'Error'); return; }
         sig.code = data.code;
         sig.explanation = data.explanation;
-        showStatus('nl-status-' + id, 'ok', data.explanation || 'Code generated.');
+        var attemptInfo = data.attempts > 1 ? ' (' + data.attempts + ' attempts)' : '';
+        var statusMsg = (data.error ? '⚠ ' + data.error : (data.explanation || 'Code generated.')) + attemptInfo;
+        showStatus('nl-status-' + id, data.error ? 'warn' : 'ok', statusMsg);
         var wrap = document.getElementById('nl-code-wrap-' + id);
         document.getElementById('nl-code-' + id).value = data.code;
         wrap.style.display = 'block';
@@ -629,7 +719,7 @@ function validateNlCode(id) {
     var code = document.getElementById('nl-code-' + id).value.trim();
     if (!code) { showStatus('nl-val-' + id, 'err', 'No code to validate.'); return; }
     // Sync back to state
-    var sig = _nlSignals.find(function(s){ return s.id === id; });
+    var sig = _nlByTf[_activeTf].find(function(s){ return s.id === id; });
     if (sig) sig.code = code;
     showStatus('nl-val-' + id, 'info', 'Validating...');
     fetch('/api/backtest/validate-signal', {
@@ -655,21 +745,23 @@ function showStatus(id, type, msg) {
 function addTicker() {
     var input = document.getElementById('ticker-input');
     var val = input.value.trim().toUpperCase();
-    if (!val || _tickers.indexOf(val) !== -1) { input.value = ''; return; }
-    _tickers.push(val);
+    var tks = _tkByTf[_activeTf];
+    if (!val || tks.indexOf(val) !== -1) { input.value = ''; return; }
+    tks.push(val);
     renderTickerList();
     input.value = ''; input.focus();
 }
 
 function removeTicker(t) {
-    _tickers = _tickers.filter(function(x){ return x !== t; });
+    _tkByTf[_activeTf] = _tkByTf[_activeTf].filter(function(x){ return x !== t; });
     renderTickerList();
 }
 
 function renderTickerList() {
     var c = document.getElementById('ticker-list');
+    if (!c) return;
     c.innerHTML = '';
-    _tickers.forEach(function(t) {
+    _tkByTf[_activeTf].forEach(function(t) {
         var tag = document.createElement('span');
         tag.className = 'ticker-tag';
         tag.innerHTML = t + '<button onclick="removeTicker(\'' + t + '\')">&#x2715;</button>';
@@ -683,7 +775,7 @@ function collectAllSignals() {
     if (_selectedBuiltins.length > 0)
         signals.push({type: 'builtin', name: _selectedBuiltins.slice(), label: 'Built-in'});
     // Sync NL name + code from inputs before collecting
-    _nlSignals.forEach(function(sig, idx) {
+    _nlByTf[_activeTf].forEach(function(sig, idx) {
         var nameEl = document.getElementById('nl-name-' + sig.id);
         if (nameEl) sig.name = nameEl.value.trim();
         var ta = document.getElementById('nl-code-' + sig.id);
@@ -693,8 +785,8 @@ function collectAllSignals() {
             signals.push({type: 'code', code: sig.code, label: label});
         }
     });
-    if (_tickers.length > 0)
-        signals.push({type: 'custom_tickers', tickers: _tickers.slice(), label: 'Ticker List'});
+    if (_tkByTf[_activeTf].length > 0)
+        signals.push({type: 'custom_tickers', tickers: _tkByTf[_activeTf].slice(), label: 'Ticker List'});
     return signals;
 }
 
@@ -779,8 +871,12 @@ function restoreResults() {
         Object.keys(saved).forEach(function(tf) {
             var entry = saved[tf];
             renderResult(tf, entry.data);
-            if (entry.info) document.getElementById('run-info').textContent = entry.info;
-            setStatus('done', 'Done');
+            // Store status per-tf; only apply to DOM if this is the active tf
+            _tfStatus[tf] = {state: 'done', text: 'Done', info: entry.info || ''};
+            if (tf === _activeTf) {
+                _applyStatus('done', 'Done');
+                if (entry.info) document.getElementById('run-info').textContent = entry.info;
+            }
             // Also restore detail breakdown
             if (entry.payload) runStrategyDetails(tf, entry.payload, entry.indivSignals || null);
         });
@@ -802,7 +898,7 @@ function buildSignalPayload() {
         signal = {type: 'builtin', name: _selectedBuiltins.length === 1 ? _selectedBuiltins[0] : _selectedBuiltins};
     } else if (_sigType === 'nl') {
         var nlCodes = [];
-        _nlSignals.forEach(function(sig) {
+        _nlByTf[_activeTf].forEach(function(sig) {
             var ta = document.getElementById('nl-code-' + sig.id);
             if (ta) sig.code = ta.value.trim();
             if (sig.code) nlCodes.push(sig.code);
@@ -810,10 +906,10 @@ function buildSignalPayload() {
         if (!nlCodes.length) { alert('Please generate at least one NL signal first.'); return null; }
         signal = nlCodes.length === 1
             ? {type: 'code', code: nlCodes[0]}
-            : {type: 'multi_code', codes: nlCodes};
+            : {type: 'multi_code', codes: nlCodes, mode: _nlModeTf[_activeTf] || 'union'};
     } else {
-        if (!_tickers.length) { alert('Add at least one ticker.'); return null; }
-        universeSource = {type: 'custom', tickers: _tickers};
+        if (!_tkByTf[_activeTf].length) { alert('Add at least one ticker.'); return null; }
+        universeSource = {type: 'custom', tickers: _tkByTf[_activeTf]};
         signal = {type: 'builtin', name: 'yearly_momentum_252d'};
     }
     return {universe_source: universeSource, signal: signal};
@@ -849,7 +945,10 @@ function runBacktest(force) {
         if (data.error) { setStatus('error', data.error); return; }
         renderResult(_activeTf, data);
         var dt = data.generated_at ? new Date(data.generated_at).toLocaleString() : '';
-        document.getElementById('run-info').textContent = dt + (data.duration_s ? ' ('+data.duration_s+'s)' : '');
+        var infoText = dt + (data.duration_s ? ' ('+data.duration_s+'s)' : '');
+        document.getElementById('run-info').textContent = infoText;
+        if (!_tfStatus[_activeTf]) _tfStatus[_activeTf] = {};
+        _tfStatus[_activeTf].info = infoText;
         setStatus('done', 'Done');
         // Persist result so refresh restores it
         var indivSignals = collectIndividualSignals();
@@ -882,6 +981,10 @@ function renderResult(tf, data) {
     setM('m-wr-'+tf,       pct(m.win_rate),      '');
     setM('m-hold-'+tf,     m.avg_hold_days!=null ? m.avg_hold_days.toFixed(1) : '\u2014', '');
     setM('m-ntrades-'+tf,  m.num_trades!=null ? m.num_trades : '\u2014', '');
+
+    // Show disclaimer whenever results are rendered
+    var disc = document.getElementById('disclaimer-'+tf);
+    if (disc) disc.classList.add('visible');
 
     if (data.equity_curve && data.equity_curve.length > 1) {
         document.getElementById('chart-wrap-'+tf).style.display = 'block';
@@ -994,7 +1097,14 @@ function esc(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+var _tfStatus = {};  // tf -> {state, text, info}
+
 function setStatus(state, text) {
+    _tfStatus[_activeTf] = {state: state, text: text};
+    _applyStatus(state, text);
+}
+
+function _applyStatus(state, text) {
     var el = document.getElementById('run-status');
     el.textContent = text;
     el.className = 'status-badge'+(state==='running'?' running':state==='done'?' done':state==='error'?' error':'');
@@ -1023,6 +1133,14 @@ function clearResults(tf) {
 // ── Per-strategy breakdown ─────────────────────────────────────────────────────
 var _detailCharts = {};
 
+function toggleDisclaimer(tf) {
+    var hdr  = document.getElementById('disclaimer-hdr-'+tf);
+    var body = document.getElementById('disclaimer-body-'+tf);
+    var open = body.classList.contains('open');
+    body.classList.toggle('open', !open);
+    hdr.classList.toggle('open', !open);
+}
+
 function toggleDetail(tf) {
     var toggle = document.getElementById('detail-toggle-'+tf);
     var body   = document.getElementById('detail-body-'+tf);
@@ -1044,15 +1162,15 @@ function collectIndividualSignals() {
             signals.push({ label: name.replace(/_/g,' '), universe_source: {type:'market'}, signal: {type:'builtin', name: name} });
         });
     } else if (_sigType === 'nl') {
-        _nlSignals.forEach(function(sig, idx) {
+        _nlByTf[_activeTf].forEach(function(sig, idx) {
             var ta = document.getElementById('nl-code-' + sig.id);
             var code = ta ? ta.value.trim() : (sig.code || '');
             if (code) {
                 signals.push({ label: sig.name || ('NL Signal '+(idx+1)), universe_source: {type:'market'}, signal: {type:'code', code: code} });
             }
         });
-    } else if (_sigType === 'manual' && _tickers.length) {
-        signals.push({ label: 'Ticker List', universe_source: {type:'custom', tickers:_tickers.slice()}, signal: {type:'builtin', name:'yearly_momentum_252d'} });
+    } else if (_sigType === 'manual' && _tkByTf[_activeTf].length) {
+        signals.push({ label: 'Ticker List', universe_source: {type:'custom', tickers:_tkByTf[_activeTf].slice()}, signal: {type:'builtin', name:'yearly_momentum_252d'} });
     }
     return signals;
 }
