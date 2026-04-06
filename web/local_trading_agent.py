@@ -154,13 +154,138 @@ def _load_yf_fundamentals(ticker: str) -> dict:
         wanted = ["shortName", "sector", "industry", "trailingPE", "priceToBook",
                   "returnOnEquity", "revenueGrowth", "profitMargins", "debtToEquity",
                   "currentPrice", "fiftyTwoWeekHigh", "fiftyTwoWeekLow",
-                  "marketCap", "dividendYield", "earningsGrowth", "forwardPE"]
+                  "marketCap", "dividendYield", "earningsGrowth", "forwardPE",
+                  "totalRevenue", "grossProfits", "operatingMargins",
+                  "trailingEps", "forwardEps", "freeCashflow", "ebitda"]
         for k in wanted:
             if info.get(k) is not None:
                 result[k] = info[k]
     except Exception:
         pass
+
+    # Quarterly financials: last 3 quarters of Revenue, Gross Profit, Net Income, Operating Income
+    try:
+        import yfinance as yf
+        t = yf.Ticker(ticker)
+        qf = t.quarterly_financials
+        if qf is not None and not qf.empty:
+            key_rows = ["Total Revenue", "Gross Profit", "Net Income", "Operating Income", "EBITDA"]
+            quarterly = {}
+            for row in key_rows:
+                if row in qf.index:
+                    series = qf.loc[row].dropna()
+                    quarterly[row] = {
+                        str(ts.date()): round(v / 1e8, 2)  # convert to 亿
+                        for ts, v in series.head(3).items()
+                    }
+            if quarterly:
+                result["quarterly_financials_100M_CNY"] = quarterly
+    except Exception:
+        pass
+
+    # Balance sheet: key items (cash, total debt, current ratio, total assets)
+    try:
+        import yfinance as yf
+        t = yf.Ticker(ticker)
+        bs = t.quarterly_balance_sheet
+        if bs is not None and not bs.empty:
+            bs_rows = ["Cash And Cash Equivalents", "Total Debt", "Current Assets",
+                       "Current Liabilities", "Total Assets", "Stockholders Equity"]
+            balance = {}
+            for row in bs_rows:
+                if row in bs.index:
+                    series = bs.loc[row].dropna()
+                    if not series.empty:
+                        latest_ts = series.index[0]
+                        balance[row] = {
+                            "latest_quarter": str(latest_ts.date()),
+                            "value_100M_CNY": round(series.iloc[0] / 1e8, 2)
+                        }
+            if balance:
+                result["balance_sheet_latest"] = balance
+    except Exception:
+        pass
+
+    # Cash flow: operating and free cash flow (last 3 quarters)
+    try:
+        import yfinance as yf
+        t = yf.Ticker(ticker)
+        cf = t.quarterly_cashflow
+        if cf is not None and not cf.empty:
+            cf_rows = ["Operating Cash Flow", "Free Cash Flow", "Capital Expenditure"]
+            cashflow = {}
+            for row in cf_rows:
+                if row in cf.index:
+                    series = cf.loc[row].dropna()
+                    cashflow[row] = {
+                        str(ts.date()): round(v / 1e8, 2)
+                        for ts, v in series.head(3).items()
+                    }
+            if cashflow:
+                result["quarterly_cashflow_100M_CNY"] = cashflow
+    except Exception:
+        pass
+
+    # Analyst ratings: consensus target price, buy/hold/sell counts, recent upgrades
+    try:
+        import yfinance as yf
+        t = yf.Ticker(ticker)
+        # Price targets
+        targets = t.analyst_price_targets
+        if targets and isinstance(targets, dict):
+            result["analyst_price_targets"] = {
+                k: round(v, 2) for k, v in targets.items()
+                if v is not None and k in ("current", "low", "high", "mean", "median", "numberOfAnalysts")
+            }
+        # Recommendations summary (buy/hold/sell counts)
+        rec = t.recommendations_summary
+        if rec is not None and not rec.empty:
+            latest = rec.iloc[0].to_dict()
+            result["analyst_recommendations"] = {
+                k: int(v) for k, v in latest.items()
+                if isinstance(v, (int, float)) and not __import__("math").isnan(float(v))
+            }
+        # Recent upgrades/downgrades (last 5)
+        upgrades = t.upgrades_downgrades
+        if upgrades is not None and not upgrades.empty:
+            recent = upgrades.head(5).reset_index()
+            result["recent_rating_changes"] = recent[
+                [c for c in ["GradeDate", "Firm", "ToGrade", "FromGrade", "Action"]
+                 if c in recent.columns]
+            ].to_dict("records")
+    except Exception:
+        pass
+
     return result
+
+
+def _load_index_benchmark(market: str, data_dir: str) -> list:
+    """Load recent index performance for benchmark context (last 5 trading days)."""
+    try:
+        import os as _os
+        import pandas as _pd
+        path = _os.path.join(data_dir, "markets", market, "indices.parquet")
+        df = _pd.read_parquet(path)
+        if df.empty:
+            return []
+        df["date"] = _pd.to_datetime(df["date"])
+        result = []
+        for symbol, grp in df.groupby("symbol"):
+            grp = grp.sort_values("date").tail(5)
+            result.append({
+                "symbol": symbol,
+                "name": grp.iloc[-1].get("name", symbol),
+                "latest_close": round(float(grp.iloc[-1]["close"]), 2),
+                "change_1d_pct": round(float(grp.iloc[-1]["change_pct"]) * 100, 2)
+                    if grp.iloc[-1].get("change_pct") is not None else None,
+                "5d_history": [
+                    {"date": str(r["date"].date()), "close": round(float(r["close"]), 2)}
+                    for _, r in grp.iterrows()
+                ],
+            })
+        return result
+    except Exception:
+        return []
 
 
 def gather_data(ticker: str, market: str, data_dir: str) -> dict:
@@ -169,12 +294,17 @@ def gather_data(ticker: str, market: str, data_dir: str) -> dict:
     price   = _load_local_price(ticker, market, data_dir)
     news    = _load_local_news(ticker, market, data_dir)
     alerts  = _load_local_alerts(ticker, market, data_dir)
+    indices = _load_index_benchmark(market, data_dir)
 
     if market == "CN":
         fundamentals = _load_cn_fundamentals(ticker)
     else:
-        # Try yfinance for all non-CN non-US markets
-        yf_ticker = ticker if "." in ticker else ticker  # suffix already on ticker for non-CN
+        # Add exchange suffix for yfinance if not already present
+        _YF_SUFFIX = {"HK": ".HK", "JP": ".T", "AU": ".AX", "IN": ".NS",
+                      "KR": ".KS", "TW": ".TW", "DE": ".DE", "FR": ".PA",
+                      "UK": ".L", "BR": ".SA", "SA": ".SR"}
+        suffix = _YF_SUFFIX.get(market, "")
+        yf_ticker = ticker if (not suffix or ticker.endswith(suffix)) else ticker + suffix
         fundamentals = _load_yf_fundamentals(yf_ticker)
 
     return {
@@ -185,6 +315,7 @@ def gather_data(ticker: str, market: str, data_dir: str) -> dict:
         "news":         news,
         "alerts":       alerts,
         "fundamentals": fundamentals,
+        "indices":      indices,
     }
 
 
@@ -236,16 +367,26 @@ def _call_llm(system: str, user: str, provider: str, api_key: str,
 def run_market_analyst(data: dict, provider: str, api_key: str) -> str:
     ticker = data["ticker"]
     name   = data["info"].get("name", ticker)
+    indices = data.get("indices", [])
+    index_text = ""
+    if indices:
+        lines = []
+        for idx in indices:
+            chg = f"{idx['change_1d_pct']:+.2f}%" if idx.get("change_1d_pct") is not None else "N/A"
+            lines.append(f"  {idx['name']} ({idx['symbol']}): {idx['latest_close']} ({chg} today)")
+        index_text = "MARKET INDICES (benchmark context):\n" + "\n".join(lines) + "\n\n"
     system = (
         "You are a technical market analyst. Analyze the provided price and volume data. "
+        "Compare the stock's performance to the market index (relative strength). "
         "Be concise. Output 3-5 bullet points covering: trend direction, volume signal, "
-        "key support/resistance, and momentum. Plain language, beginner-friendly."
+        "performance vs index, and momentum. Plain language, beginner-friendly."
     )
     user = (
         f"Stock: {name} ({ticker})\n\n"
         f"PRICE & VOLUME DATA:\n{_price_summary(data['price'])}\n\n"
+        f"{index_text}"
         f"ALERTS: {json.dumps(data['alerts'], ensure_ascii=False, default=str)[:500]}\n\n"
-        "Write a concise technical analysis (max 200 words)."
+        "Write a concise technical analysis (max 200 words). Include comparison to the index."
     )
     return _call_llm(system, user, provider, api_key, max_tokens=400)
 
@@ -257,18 +398,40 @@ def run_fundamentals_analyst(data: dict, provider: str, api_key: str) -> str:
     info   = data["info"]
 
     system = (
-        "You are a fundamental analyst. Assess the company's financial health. "
-        "Cover valuation (P/E, P/B), profitability, growth, and debt. "
-        "If data is missing say so briefly. Be concise and beginner-friendly."
+        "You are a fundamental analyst. Assess the company's financial health using the exact numbers provided. "
+        "ALWAYS cite specific figures (e.g. 'Q3 FY2026 revenue was ¥2,848亿', 'net profit margin 8.9%', 'P/E 21.5x'). "
+        "NEVER make vague statements like 'revenue grew' without giving the actual number. "
+        "Cover: (1) latest quarterly revenue & profit with YoY comparison, "
+        "(2) valuation multiples (P/E, P/B, forward P/E), "
+        "(3) profitability margins, (4) debt situation. "
+        "Be concise and beginner-friendly. If a number is missing, say so explicitly."
     )
-    fund_text = _fmt(fund)[:1500] if fund else "No fundamental data available."
+    # Separate out analyst ratings to highlight them
+    analyst_text = ""
+    targets = fund.get("analyst_price_targets", {})
+    recs    = fund.get("analyst_recommendations", {})
+    changes = fund.get("recent_rating_changes", [])
+    if targets or recs or changes:
+        parts = []
+        if targets:
+            parts.append(f"Analyst price targets: {json.dumps(targets, ensure_ascii=False)}")
+        if recs:
+            parts.append(f"Analyst recommendations: {json.dumps(recs, ensure_ascii=False)}")
+        if changes:
+            parts.append(f"Recent rating changes (last 5): {json.dumps(changes, ensure_ascii=False, default=str)}")
+        analyst_text = "\n\nANALYST RATINGS:\n" + "\n".join(parts)
+
+    fund_text = _fmt(fund)[:1800] if fund else "No fundamental data available."
     user = (
         f"Stock: {name} ({ticker})\n"
         f"Sector: {info.get('sector', 'N/A')}  Industry: {info.get('industry', 'N/A')}\n\n"
-        f"FUNDAMENTAL DATA:\n{fund_text}\n\n"
-        "Write a concise fundamentals analysis (max 200 words)."
+        f"FUNDAMENTAL DATA (use these exact numbers in your analysis):\n{fund_text}"
+        f"{analyst_text}\n\n"
+        "Write a concise fundamentals analysis (max 250 words). "
+        "You MUST include specific numbers — do not generalize. "
+        "If analyst targets are available, state the consensus target vs current price."
     )
-    return _call_llm(system, user, provider, api_key, max_tokens=400)
+    return _call_llm(system, user, provider, api_key, max_tokens=450)
 
 
 def run_news_analyst(data: dict, provider: str, api_key: str) -> str:
@@ -276,35 +439,40 @@ def run_news_analyst(data: dict, provider: str, api_key: str) -> str:
     name   = data["info"].get("name", ticker)
     news   = data["news"]
 
-    # If no local news, fall back to live web search
-    source_label = "local pipeline"
-    web_sources = ""
-    if not news:
-        try:
-            from web.agent_llm import _web_search
-        except ImportError:
-            from agent_llm import _web_search
-        query = f"{name} {ticker} stock news"
-        web_raw = _web_search(query, max_results=6)
+    # Always fetch live web news to supplement (or replace) local cached data.
+    # Local cache may be stale or contain keyword-mismatched articles.
+    try:
+        from web.agent_llm import _web_search
+    except ImportError:
+        from agent_llm import _web_search
+    query = f"{name} {ticker} stock news"
+    web_raw = _web_search(query, max_results=6)
+    urls = [l.strip() for l in web_raw.split("\n") if l.strip().startswith("http")]
+    web_sources = "\n\n*Sources: " + " · ".join(urls[:4]) + "*" if urls else ""
+
+    if news:
+        # Combine: local pipeline headlines + live web results
+        news_text = (
+            "=== Local pipeline (cached) ===\n" + _fmt(news)[:800] +
+            "\n\n=== Live web search ===\n" + web_raw[:800]
+        )
+        source_label = "local pipeline + live web search"
+    else:
         news_text = web_raw[:1500]
         source_label = "live web search"
-        # Extract source URLs
-        urls = [l.strip() for l in web_raw.split("\n") if l.strip().startswith("http")]
-        if urls:
-            web_sources = "\n\n*Sources: " + " · ".join(urls[:4]) + "*"
-    else:
-        news_text = _fmt(news)[:1200]
 
     system = (
         "You are a news and sentiment analyst. Assess recent news for this stock. "
         "Identify positive/negative catalysts and overall market sentiment. "
-        "Be concise and beginner-friendly."
+        "Prioritise the most recent and relevant articles. Discard any articles that are "
+        "clearly unrelated to this company. Be concise and beginner-friendly."
     )
     user = (
         f"Stock: {name} ({ticker})\n"
         f"News source: {source_label}\n\n"
         f"RECENT NEWS:\n{news_text}\n\n"
-        "Write a concise news/sentiment analysis (max 200 words)."
+        "Write a concise news/sentiment analysis (max 200 words). "
+        "If an article is clearly not about this company, ignore it."
     )
     result = _call_llm(system, user, provider, api_key, max_tokens=400)
     return result + web_sources
@@ -393,9 +561,10 @@ def run_decision_maker(ticker: str, name: str,
 
 # ── Main entry point ──────────────────────────────────────────────
 
-def local_trading_analyze(ticker: str, data_dir: str) -> str:
+def local_trading_analyze(ticker: str, data_dir: str, _allow_us: bool = False) -> str:
     """
     Run full multi-agent analysis for a non-US ticker.
+    Pass _allow_us=True to bypass the US guard (used as TradingAgents fallback for ADRs).
 
     Returns formatted markdown analysis string.
     """
@@ -410,7 +579,7 @@ def local_trading_analyze(ticker: str, data_dir: str) -> str:
         return "⚙ LLM API key not configured. Open the chat panel → ⚙ gear icon → enter your API key."
 
     market = detect_market(ticker)
-    if market == "US":
+    if market == "US" and not _allow_us:
         return "US stocks are handled by TradingAgents. Use the standard analyze command."
 
     # 1. Gather all data

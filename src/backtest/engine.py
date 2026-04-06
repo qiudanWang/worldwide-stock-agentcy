@@ -311,6 +311,9 @@ def _run_yearly_mode(
     all_years = list(range(start_year, end_year + 1))
     total = len(all_years)
 
+    # Baseline entry so equity[0] == INITIAL_EQUITY, making total_return include year 1
+    equity_curve.append((f"{start_year}-01-01", round(equity, 2)))
+
     for i, year in enumerate(all_years):
         as_of = f"{year}-01-01"
         year_end = f"{year}-12-31"
@@ -332,7 +335,7 @@ def _run_yearly_mode(
         # Compute return for this year
         year_return = _compute_equal_weight_return(selected, history, as_of, year_end)
         equity = equity * (1 + year_return)
-        equity_curve.append((as_of, round(equity, 2)))
+        equity_curve.append((year_end, round(equity, 2)))
 
         # Record cohort trades
         for tk in selected:

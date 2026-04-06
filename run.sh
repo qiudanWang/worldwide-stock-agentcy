@@ -14,7 +14,7 @@
 #   ./run.sh --type global                      Run global agent only
 #   ./run.sh --legacy                           Run legacy pipeline (backward compat)
 
-PROJECT_DIR="/Users/cathewan/Desktop/stocks"
+PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VENV="$PROJECT_DIR/venv/bin/python"
 LOG_DIR="$PROJECT_DIR/data/logs"
 DATE=$(date +%Y%m%d)

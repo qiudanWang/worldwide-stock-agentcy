@@ -267,6 +267,22 @@ class DataAgent(BaseAgent):
                     yf_col = "yf_symbol" if "yf_symbol" in df.columns else "ticker"
                     df = enrich_subsector_yf(df, ticker_col=yf_col)
 
+        # Enrich names if still set to ticker number (fallback from build_yf_universe placeholder)
+        if not df.empty and "name" in df.columns and "ticker" in df.columns:
+            name_is_ticker = df["name"].astype(str) == df["ticker"].astype(str)
+            if name_is_ticker.any():
+                from src.universe.yf_universe import enrich_name_yf
+                _YF_SUFFIX = {"HK": ".HK", "JP": ".T", "AU": ".AX", "IN": ".NS",
+                              "KR": ".KS", "TW": ".TW", "DE": ".DE", "FR": ".PA",
+                              "UK": ".L", "BR": ".SA", "SA": ".SR"}
+                suffix = _YF_SUFFIX.get(market, "")
+                if suffix and "yf_symbol" in df.columns:
+                    df = df.copy()
+                    mask = ~df["yf_symbol"].astype(str).str.endswith(suffix)
+                    df.loc[mask, "yf_symbol"] = df.loc[mask, "yf_symbol"].astype(str) + suffix
+                yf_col = "yf_symbol" if "yf_symbol" in df.columns else "ticker"
+                df = enrich_name_yf(df, ticker_col=yf_col)
+
         # Save to market directory
         if not df.empty:
             path = get_data_path("markets", market, "universe.parquet")

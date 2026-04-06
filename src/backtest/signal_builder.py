@@ -55,6 +55,8 @@ Rules:
 - Use pct_change() for percentage returns, not diff() — diff() gives absolute price change which is scale-dependent
 - When ranking/sorting stocks, ALWAYS use a numeric score (float), NEVER a boolean — boolean comparisons like (a > b) return True/False which makes sort meaningless
 - For breakout magnitude: compute the numeric excess e.g. breakout_mag = price_change - 1.5 * atr, then check breakout_mag > 0 AND append breakout_mag as the score
+- np.maximum() only accepts TWO arrays at a time — for three-way max (e.g. True Range) always nest: np.maximum(a, np.maximum(b, c)), NEVER np.maximum(a, b, c)
+- When mixing ATR (absolute price units) with returns (percentage), ALWAYS normalize to the same unit before comparing or subtracting. Use atr_pct = atr / close.shift() to convert ATR to percentage, then compare with pct_change() returns
 - ALWAYS filter by date first, THEN check len(df) < N, THEN compute indicators:
     df = df[df['date'] <= date].copy()   # 1. filter + copy
     if len(df) < N: continue             # 2. length guard (on the filtered slice)
@@ -79,7 +81,9 @@ Check for these specific issues:
 4. len(df) < N check placed BEFORE the date filter — must be AFTER: first do df = df[df['date'] <= date].copy(), then check len(df) < N. Otherwise the full history may have enough rows but the filtered slice does not, making indicators full of NaN.
 5. len(df) < N check placed AFTER computing indicators — should be BEFORE indicators
 6. Using df.loc[timestamp] to filter by date — index is integers, use df[df['date'] <= date]
-7. Any syntax errors or obvious logic bugs
+7. np.maximum() called with more than two arguments — must be nested: np.maximum(a, np.maximum(b, c))
+8. Mixing ATR (absolute price) with pct_change() returns (percentage) in the same expression — they have different units and must be normalized first (e.g. atr_pct = atr / close.shift())
+9. Any syntax errors or obvious logic bugs
 
 Respond in this EXACT format:
 

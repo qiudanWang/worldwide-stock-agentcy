@@ -115,6 +115,10 @@ def load_name_lookup():
     """Load a ticker->name lookup dict from the universe master.
 
     Tries global/universe_master.parquet first, falls back to legacy location.
+
+    When multiple markets share the same ticker number (e.g. HK:2382 and TW:2382),
+    the first real name encountered wins — a later market cannot overwrite with a
+    placeholder or a name from a different market.
     """
     paths = [
         get_data_path("global", "universe_master.parquet"),
@@ -125,10 +129,17 @@ def load_name_lookup():
             df = pd.read_parquet(path, columns=["ticker", "name", "market"])
             lookup = {}
             for _, row in df.iterrows():
+                ticker = row["ticker"]
+                name = row["name"]
                 if row["market"] == "US":
-                    lookup[row["ticker"]] = US_STOCK_NAMES.get(row["ticker"], row["name"])
-                else:
-                    lookup[row["ticker"]] = row["name"]
+                    name = US_STOCK_NAMES.get(ticker, name)
+                # Only store if we don't already have a real name for this ticker.
+                # A "real name" is one that differs from the ticker placeholder.
+                existing = lookup.get(ticker)
+                is_placeholder = (name == ticker)
+                existing_is_placeholder = (existing == ticker or existing is None)
+                if existing is None or (existing_is_placeholder and not is_placeholder):
+                    lookup[ticker] = name
             return lookup
         except Exception:
             continue

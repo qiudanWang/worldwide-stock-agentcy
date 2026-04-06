@@ -1395,7 +1395,10 @@ def market_page(market_code=None):
             name = row["name"]
             if market == "US":
                 name = US_STOCK_NAMES.get(ticker, name)
-            elif ticker in name_lookup:
+            elif name == ticker and ticker in name_lookup:
+                # Only use the flat name_lookup as a fallback for placeholder names.
+                # Unconditional override causes cross-market ticker collisions
+                # (e.g. HK:2382 "Sunny Optical" being overwritten by TW:2382 "廣達").
                 name = name_lookup[ticker]
 
             tag = tags.get(ticker, {})

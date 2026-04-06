@@ -364,12 +364,15 @@ Question: {message}
 Tools:
 {tools_list}
 
-Return: {{"tools": ["tool1", "tool2"], "tickers": ["TICKER"]}}
+Return: {{"tools": ["tool1", "tool2"], "tickers": ["TICKER"], "company_name": ""}}
+
+- tickers: ONLY ticker codes that the user explicitly typed (e.g. "NVDA", "688031", "9988"). Do NOT infer or convert company names to tickers — if user typed "阿里巴巴" or "Tesla", do NOT put "BABA" or "TSLA" in tickers.
+- company_name: if user mentions a company by name rather than by ticker code (e.g. "阿里巴巴", "Tesla", "腾讯"), put the name here and leave tickers empty.
 
 Rules:
 - Pick 1-4 tools. local tools are fast (cached), OpenBB tools fetch live data.
-- Extract stock tickers: 1-5 uppercase letters for US (e.g. NVDA, AAPL) OR 6-digit numbers for CN A-shares (e.g. 688031, 000001).
-- Use trading_agent ONLY if user says "analyze TICKER" or requests deep analysis of a specific stock. Works for both US and CN tickers.
+- Extract stock tickers: 1-5 uppercase letters for US (e.g. NVDA, AAPL) OR 6-digit numbers for CN A-shares (e.g. 688031, 000001) OR 4-5 digits for HK (e.g. 9988, 0700).
+- Use trading_agent if user asks to analyze a specific stock or company, whether by ticker (e.g. "analyze NVDA", "分析9988") or by company name (e.g. "帮我分析一下阿里巴巴", "analyze Tesla", "分析腾讯"). Works for all markets.
 - Use sector_agent if user mentions a sector/industry/subsector (e.g. "analyze tech sector", "分析半导体板块", "semiconductor industry outlook", "software application companies", "医疗器械板块"). Extract the sector or subsector name as a ticker.
 - CRITICAL: openbb_gainers/losers/active return US stocks ONLY. NEVER use for CN/HK/JP/KR/TW/IN/UK/DE/FR/AU/BR/SA markets.
 - Non-US market movers (gainers/losers/active) → local_data + openbb_indices (has return_1d for ranking, plus live index).
@@ -394,8 +397,9 @@ Rules:
             parsed = json.loads(match.group())
             tools = [t for t in parsed.get("tools", []) if t in TOOLS]
             tickers = [t for t in parsed.get("tickers", []) if isinstance(t, str)]
+            company_name = parsed.get("company_name", "").strip()
             if tools:
-                return {"tools": tools, "tickers": tickers[:4]}
+                return {"tools": tools, "tickers": tickers[:4], "company_name": company_name}
     except Exception:
         pass
 
@@ -426,8 +430,19 @@ Rules:
         sector = clean.strip().strip("?？ \t\n") or "tech"
         return {"tools": ["sector_agent"], "tickers": [sector]}
 
-    if ("analyze" in msg_lower or "分析" in message) and tickers:
+    _ANALYZE_KEYWORDS = ["analyze", "analysis", "分析", "帮我看看", "帮我分析", "研究一下"]
+    is_analyze = any(k in message for k in _ANALYZE_KEYWORDS)
+    if is_analyze and tickers:
         return {"tools": ["trading_agent"], "tickers": tickers}
+    # Analyze by company name (no ticker in message) — resolve via alias map later
+    if is_analyze and not tickers:
+        # Extract company name: remove intent words and punctuation
+        clean = message
+        for w in _ANALYZE_KEYWORDS + ["一下", "帮我", "请", "?", "？"]:
+            clean = clean.replace(w, " ")
+        company_name = clean.strip()
+        if company_name:
+            return {"tools": ["trading_agent"], "tickers": [], "company_name": company_name}
 
     tools = []
     if agent_type == "global" or market in (None, "ALL"):
@@ -703,15 +718,14 @@ def get_llm_provider():
 
 
 def _resolve_cn_name_to_ticker(name: str, data_dir: str) -> str | None:
-    """Look up a CN company name in the local universe and return its 6-digit ticker."""
+    """Look up a company name in the CN A-share universe and return its 6-digit ticker."""
     import re as _re
     if _re.match(r'^\d{6}$', name.strip()):
-        return name.strip()  # Already a valid ticker
+        return name.strip()
     try:
         uni_path = os.path.join(data_dir, "markets", "CN", "universe.parquet")
         uni = pd.read_parquet(uni_path)
         if "name" in uni.columns and "ticker" in uni.columns:
-            # Exact match first, then substring
             exact = uni[uni["name"] == name]
             if not exact.empty:
                 return str(exact.iloc[0]["ticker"])
@@ -721,6 +735,102 @@ def _resolve_cn_name_to_ticker(name: str, data_dir: str) -> str | None:
     except Exception:
         pass
     return None
+
+
+# Known Chinese name → (ticker, market) for well-known stocks whose yfinance name is English-only.
+# Used as a last-resort fallback when name lookup against the stored English names fails.
+_CN_NAME_ALIASES: dict[str, tuple[str, str]] = {
+    # HK
+    "阿里巴巴": ("9988", "HK"), "阿里": ("9988", "HK"),
+    "腾讯": ("700", "HK"),
+    "美团": ("3690", "HK"),
+    "京东": ("9618", "HK"),
+    "百度": ("9888", "HK"),
+    "网易": ("9999", "HK"),
+    "快手": ("1024", "HK"),
+    "哔哩哔哩": ("9626", "HK"), "b站": ("9626", "HK"),
+    "携程": ("9961", "HK"),
+    "小米": ("1810", "HK"),
+    "联想": ("992", "HK"),
+    "中芯国际": ("981", "HK"),
+    "华虹": ("1347", "HK"),
+    "比亚迪": ("1211", "HK"),
+    "蔚来": ("9866", "HK"),
+    "小鹏": ("9868", "HK"), "小鹏汽车": ("9868", "HK"),
+    "理想": ("2015", "HK"), "理想汽车": ("2015", "HK"),
+    "金蝶": ("268", "HK"),
+    "中兴": ("763", "HK"), "中兴通讯": ("763", "HK"),
+    "舜宇": ("2382", "HK"), "舜宇光学": ("2382", "HK"),
+    "瑞声": ("2018", "HK"), "瑞声科技": ("2018", "HK"),
+    "吉利": ("175", "HK"), "吉利汽车": ("175", "HK"),
+    "港交所": ("388", "HK"),
+    "阿里健康": ("241", "HK"),
+    "京东健康": ("6618", "HK"),
+    "商汤": ("20", "HK"), "商汤科技": ("20", "HK"),
+    "药明生物": ("2269", "HK"),
+    "平安好医生": ("1833", "HK"),
+    "金山软件": ("3888", "HK"),
+    "联发科": ("2454", "TW"),
+    # US
+    "英伟达": ("NVDA", "US"), "英达": ("NVDA", "US"),
+    "苹果": ("AAPL", "US"),
+    "微软": ("MSFT", "US"),
+    "谷歌": ("GOOGL", "US"),
+    "亚马逊": ("AMZN", "US"),
+    "特斯拉": ("TSLA", "US"),
+    "脸书": ("META", "US"), "元宇宙": ("META", "US"),
+    "奈飞": ("NFLX", "US"),
+}
+
+
+def _find_company_in_market(name: str, market: str, data_dir: str) -> str | None:
+    """Look up a company name in a single market's universe. Returns ticker or None."""
+    try:
+        uni_path = os.path.join(data_dir, "markets", market, "universe.parquet")
+        uni = pd.read_parquet(uni_path)
+        if "name" not in uni.columns or "ticker" not in uni.columns:
+            return None
+        exact = uni[uni["name"] == name]
+        if not exact.empty:
+            return str(exact.iloc[0]["ticker"])
+        partial = uni[uni["name"].str.contains(name, na=False, regex=False)]
+        if not partial.empty:
+            return str(partial.iloc[0]["ticker"])
+    except Exception:
+        pass
+    # Fallback: check known Chinese name aliases for this market
+    alias = _CN_NAME_ALIASES.get(name)
+    if alias and alias[1] == market:
+        return alias[0]
+    return None
+
+
+def _find_company_in_markets(name: str, data_dir: str) -> tuple[str, str] | tuple[None, None]:
+    """Search all market universes for a company name. Returns (ticker, market) or (None, None)."""
+    _MARKET_LABELS = {
+        "CN": "A股", "HK": "港股", "US": "美股", "JP": "日股",
+        "KR": "韩股", "TW": "台股", "IN": "印度", "UK": "英股",
+        "DE": "德股", "FR": "法股", "AU": "澳股", "BR": "巴西", "SA": "沙特",
+    }
+    for market in _MARKET_LABELS:
+        try:
+            uni_path = os.path.join(data_dir, "markets", market, "universe.parquet")
+            uni = pd.read_parquet(uni_path)
+            if "name" not in uni.columns or "ticker" not in uni.columns:
+                continue
+            exact = uni[uni["name"] == name]
+            if not exact.empty:
+                return str(exact.iloc[0]["ticker"]), market
+            partial = uni[uni["name"].str.contains(name, na=False, regex=False)]
+            if not partial.empty:
+                return str(partial.iloc[0]["ticker"]), market
+        except Exception:
+            continue
+    # Fallback: check known Chinese name aliases across all markets
+    alias = _CN_NAME_ALIASES.get(name)
+    if alias:
+        return alias[0], alias[1]
+    return None, None
 
 
 def _web_to_local_enrichment(web_result: str, user_question: str,
@@ -880,22 +990,68 @@ def agent_chat(agent_type, market, message, data_dir, chat_history=None, languag
     if provider is None:
         return None
 
-    # Pre-process: detect Chinese "分析 XXX" pattern and resolve company name → ticker
-    cn_analyze_match = _re.search(r'分析\s*(\S+)', message)
-    if cn_analyze_match:
-        candidate = cn_analyze_match.group(1).strip()
-        # If it's not already a ticker code (6 digits / uppercase), try universe lookup
-        if not _re.match(r'^(\d{4,6}|[A-Z]{1,5})$', candidate):
-            resolved = _resolve_cn_name_to_ticker(candidate, data_dir)
-            if resolved:
-                message = f"analyze {resolved}"
-            else:
-                message = f"analyze {candidate}"  # Pass through; TradingAgents will handle it
-
     # 1. Route: ask LLM which tools to call
     route = _route_message(message, market, agent_type, provider, api_key)
     tools = route.get("tools", ["local_data"])
     tickers = route.get("tickers", [])
+    company_name = route.get("company_name", "")
+
+    # If LLM extracted a company name but no ticker, resolve it.
+    # For CN agent: only look up A-shares; if found elsewhere, tell user to ask the right agent.
+    _MARKET_NAMES = {
+        "CN": "A股", "HK": "港股", "US": "美股", "JP": "日股",
+        "KR": "韩股", "TW": "台股", "IN": "印度股", "UK": "英股",
+        "DE": "德股", "FR": "法股", "AU": "澳股", "BR": "巴西股", "SA": "沙特股",
+    }
+    # Single-market agents: check that every resolved ticker belongs to this market.
+    # If a ticker belongs to a different market, redirect the user.
+    # Global agent has no boundary — skip this check.
+    if "trading_agent" in tools and market and market not in (None, "ALL", "global"):
+        try:
+            from web.local_trading_agent import detect_market as _detect
+        except ImportError:
+            from local_trading_agent import detect_market as _detect
+
+        def _redirect_msg(name_or_ticker, ticker_market):
+            current_label = _MARKET_NAMES.get(market, market)
+            alt_label     = _MARKET_NAMES.get(ticker_market, ticker_market)
+            return (f"**{name_or_ticker}** 不是{current_label}，"
+                    f"它在**{alt_label}**上市。\n\n"
+                    f"请切换到 **{ticker_market} Market Agent** 提问。")
+
+        # Case 1: tickers already extracted — check each one
+        if tickers:
+            foreign = [t for t in tickers if _detect(t) != market]
+            if foreign:
+                tk = foreign[0]
+                tk_market = _detect(tk)
+                display = company_name or tk
+                return _redirect_msg(display, tk_market)
+
+        # Case 2: company name but no ticker — try local market first, then others
+        elif company_name:
+            local_ticker = _resolve_cn_name_to_ticker(company_name, data_dir) \
+                if market == "CN" else _find_company_in_market(company_name, market, data_dir)
+            if local_ticker:
+                tickers = [local_ticker]
+            else:
+                alt_ticker, alt_market = _find_company_in_markets(company_name, data_dir)
+                current_label = _MARKET_NAMES.get(market, market)
+                if alt_ticker and alt_market:
+                    return _redirect_msg(company_name, alt_market)
+                else:
+                    return (f"**{company_name}** 不在{current_label}市场，"
+                            f"本 agent 只覆盖{current_label}。\n\n"
+                            f"请切换到对应的 Market Agent 提问。")
+
+    # For the global agent: resolve company_name → ticker across all markets.
+    # Single-market agents handle this above (with redirect); global agent has no boundary.
+    if "trading_agent" in tools and not tickers and company_name \
+            and (not market or market in (None, "ALL", "global")):
+        resolved_ticker, resolved_market = _find_company_in_markets(company_name, data_dir)
+        if resolved_ticker:
+            tickers = [resolved_ticker]
+        # If still not found, let it fall through to web_search / LLM synthesis
 
     # Force web_search if user explicitly requests it (override LLM router)
     _WEB_TRIGGERS = ["internet", "search", "browse", "google", "web", "online",
@@ -955,18 +1111,20 @@ def agent_chat(agent_type, market, message, data_dir, chat_history=None, languag
             if local_enrichment:
                 tool_results["local_data_from_web"] = local_enrichment
 
-    # 4b. Build combined context from tool outputs
+    # 4b. Build combined context from tool outputs.
+    # Keep total chars low enough to stay under the model's token limit.
+    # Budget: ~8192 tokens total; reserve ~2000 for system prompt + history + completion.
+    # That leaves ~6192 tokens ≈ ~12000 chars for combined_context.
     context_parts = []
     for tool_name, result in tool_results.items():
         label = tool_name.replace("_", " ").upper()
-        # Truncate each tool's output individually
-        if len(result) > 8000:
-            result = result[:8000] + "\n...(truncated)"
+        if len(result) > 2500:
+            result = result[:2500] + "\n...(truncated)"
         context_parts.append(f"=== {label} ===\n{result}")
 
     combined_context = "\n\n".join(context_parts)
-    if len(combined_context) > 24000:
-        combined_context = combined_context[:24000] + "\n...(truncated)"
+    if len(combined_context) > 12000:
+        combined_context = combined_context[:12000] + "\n...(truncated)"
 
     # 5. Pick system prompt
     is_global = agent_type == "global" or market in (None, "ALL")
@@ -1012,9 +1170,9 @@ RULES:
 
     try:
         if provider == "anthropic":
-            result = _call_anthropic(api_key, full_system, history_msgs, wrapped_message)
+            result = _call_anthropic(api_key, full_system, history_msgs, wrapped_message, max_tokens=800)
         else:
-            result = _call_openai(api_key, full_system, history_msgs, wrapped_message)
+            result = _call_openai(api_key, full_system, history_msgs, wrapped_message, max_tokens=800)
 
         # Fallback: if response admits inability and web search wasn't used, retry with web search
         _INABILITY_PHRASES = [
@@ -1385,6 +1543,22 @@ def trading_agents_analyze(ticker, date=None):
             local = _local_cn_supplement(ticker)
             if local:
                 result += "\n\n" + local
+
+        # If TradingAgents signals insufficient data, fall back to local multi-agent analysis.
+        # This handles Chinese ADRs (BABA, BIDU, JD, PDD, etc.) which are US-listed but
+        # have poor coverage in TradingAgents' remote fundamentals sources.
+        insufficient = (
+            isinstance(decision, dict) and "没有足够" in str(decision.get("reasoning", ""))
+        ) or "没有足够" in result
+        if insufficient:
+            try:
+                from web.local_trading_agent import local_trading_analyze
+            except ImportError:
+                from local_trading_agent import local_trading_analyze
+            data_dir = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"
+            )
+            return local_trading_analyze(ticker, data_dir, _allow_us=True)
 
         return result
     except Exception as e:
