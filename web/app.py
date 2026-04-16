@@ -1373,7 +1373,12 @@ def market_page(market_code=None):
     latest = {}
     ticker_history = {}
     if not full.empty:
-        last_day = full.sort_values("date").groupby("ticker").tail(1)
+        # Prefer rows with a valid close price so a partial today-run (NaN close)
+        # doesn't shadow yesterday's complete data.
+        full_valid = full[full["close"].notna()] if "close" in full.columns else full
+        if full_valid.empty:
+            full_valid = full
+        last_day = full_valid.sort_values("date").groupby("ticker").tail(1)
         for _, row in last_day.iterrows():
             latest[row["ticker"]] = row.to_dict()
         for ticker, grp in full.groupby("ticker"):
@@ -1439,12 +1444,6 @@ def market_page(market_code=None):
 
             tag = tags.get(ticker, {})
             mkt = latest.get(ticker, {})
-
-            # Skip tickers with no price data — they only produce empty rows
-            close_val = mkt.get("close")
-            if not mkt or close_val is None or pd.isna(close_val):
-                continue
-
             mc_val = cap_lookup.get(ticker) or mkt.get("market_cap")
 
             fin = fin_by_ticker.get(str(ticker), {})
