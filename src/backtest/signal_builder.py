@@ -172,7 +172,7 @@ def generate_signal_code(description: str, llm_config: dict) -> dict:
     try:
         from openai import OpenAI
         import httpx
-        client = OpenAI(api_key=api_key, base_url=base_url, http_client=httpx.Client(verify=False))
+        client = OpenAI(api_key=api_key, base_url=base_url)
 
         gen_messages = [
             {"role": "system", "content": SYSTEM_GENERATOR},
@@ -219,10 +219,10 @@ def generate_signal_code(description: str, llm_config: dict) -> dict:
                 ),
             })
 
-        # Exhausted attempts — return last generated code with a warning
-        log.warning(f"[signal_builder] max attempts reached, returning last code with known issues")
+        # Exhausted attempts — reflector still found issues, mark as failed
+        log.warning(f"[signal_builder] max attempts reached with unresolved issues")
         return {"code": code, "explanation": explanation,
-                "success": True, "error": f"Warning: reflector found issues after {MAX_REFLECTION_ATTEMPTS} attempts: {'; '.join(issues)}",
+                "success": False, "error": f"Reflector found issues after {MAX_REFLECTION_ATTEMPTS} attempts: {'; '.join(issues)}",
                 "attempts": MAX_REFLECTION_ATTEMPTS}
 
     except Exception as e:

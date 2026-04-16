@@ -122,12 +122,69 @@ def get_major_indices() -> str:
 
 
 def get_fundamentals(ticker: str) -> str:
-    """Key financial ratios and fundamentals."""
+    """Key financial ratios and fundamentals. Falls back to direct yfinance for non-US."""
+    # Try OpenBB first
     obb = _get_obb()
     df = _safe(obb.equity.fundamental.ratios, ticker, provider="yfinance", limit=1)
-    if df.empty:
-        return f"No fundamental data for {ticker}."
-    return f"FUNDAMENTALS ({ticker}):\n" + _df_text(df)
+    if not df.empty:
+        return f"FUNDAMENTALS ({ticker}):\n" + _df_text(df)
+
+    # Fallback: pull directly from yfinance for non-US tickers (HK, JP, etc.)
+    try:
+        import yfinance as yf
+        t = yf.Ticker(ticker)
+        info = t.info or {}
+        if not info or info.get("regularMarketPrice") is None and not info.get("marketCap"):
+            raise ValueError("empty info")
+
+        lines = [f"FUNDAMENTALS ({ticker}) [via yfinance]:"]
+        for label, key in [
+            ("Market Cap",          "marketCap"),
+            ("P/E (trailing)",      "trailingPE"),
+            ("P/E (forward)",       "forwardPE"),
+            ("EPS (trailing)",      "trailingEps"),
+            ("Revenue (TTM)",       "totalRevenue"),
+            ("Net Income",          "netIncomeToCommon"),
+            ("Profit Margin",       "profitMargins"),
+            ("Gross Margin",        "grossMargins"),
+            ("Operating Margin",    "operatingMargins"),
+            ("ROE",                 "returnOnEquity"),
+            ("Debt/Equity",         "debtToEquity"),
+            ("Current Ratio",       "currentRatio"),
+            ("Free Cash Flow",      "freeCashflow"),
+            ("Dividend Yield",      "dividendYield"),
+            ("52w High",            "fiftyTwoWeekHigh"),
+            ("52w Low",             "fiftyTwoWeekLow"),
+            ("Analyst Target",      "targetMeanPrice"),
+            ("Recommendation",      "recommendationKey"),
+        ]:
+            v = info.get(key)
+            if v is not None:
+                # Format large numbers in billions/millions
+                if isinstance(v, (int, float)) and abs(v) > 1_000_000:
+                    v = f"{v/1e8:.2f}亿" if abs(v) > 1e8 else f"{v/1e6:.1f}M"
+                lines.append(f"  {label}: {v}")
+
+        # Quarterly income statement
+        try:
+            fin = t.quarterly_financials
+            if fin is not None and not fin.empty:
+                lines.append("\nQuarterly Financials (recent 2Q):")
+                for col in fin.columns[:2]:
+                    q_date = str(col)[:10]
+                    rev = fin.loc["Total Revenue", col] if "Total Revenue" in fin.index else None
+                    ni  = fin.loc["Net Income",    col] if "Net Income"    in fin.index else None
+                    parts = []
+                    if rev is not None: parts.append(f"Rev={rev/1e8:.1f}亿")
+                    if ni  is not None: parts.append(f"NI={ni/1e8:.1f}亿")
+                    if parts:
+                        lines.append(f"  {q_date}: {', '.join(parts)}")
+        except Exception:
+            pass
+
+        return "\n".join(lines)
+    except Exception as e:
+        return f"No fundamental data for {ticker}. (yfinance error: {e})"
 
 
 def get_earnings_calendar(limit: int = 10) -> str:

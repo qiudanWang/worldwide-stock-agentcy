@@ -109,7 +109,11 @@ def fetch_polymarket_signals(limit=200, min_volume=1000):
             except Exception:
                 pass
 
-        slug = m.get("slug", "")
+        # Polymarket URLs use the *event* slug, not the market slug.
+        # The market slug often has a numeric suffix (e.g. "-899") that breaks the link.
+        events = m.get("events", [])
+        event_slug = events[0].get("slug", "") if events else ""
+        slug = event_slug or m.get("slug", "")
         url = f"https://polymarket.com/event/{slug}" if slug else "https://polymarket.com"
 
         results.append({

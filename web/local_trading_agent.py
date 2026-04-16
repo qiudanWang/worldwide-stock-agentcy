@@ -39,8 +39,10 @@ def detect_market(ticker: str) -> str:
     # Suffixed tickers: 7203.T → JP, 005930.KS → KR, etc.
     m = re.match(r'^[\dA-Z]+\.([A-Z]+)$', t)
     if m:
-        suffix_map = {"T": "JP", "KS": "KR", "TW": "TW", "NS": "IN",
-                      "L": "UK", "DE": "DE", "PA": "FR", "AX": "AU", "SA": "SA"}
+        suffix_map = {"T": "JP", "KS": "KR", "KQ": "KR", "TW": "TW",
+                      "NS": "IN", "BO": "IN", "L": "UK", "DE": "DE",
+                      "PA": "FR", "AX": "AU", "SA": "BR",
+                      "SS": "CN", "SZ": "CN", "HK": "HK"}
         return suffix_map.get(m.group(1), "UNKNOWN")
     return "UNKNOWN"
 
@@ -56,20 +58,36 @@ def _load_local_price(ticker: str, market: str, data_dir: str) -> dict:
     if not files:
         return result
     try:
-        df = pd.read_parquet(files[-1])
+        # Read last 2 files so we can fall back to yesterday's close when today's
+        # snapshot was written before market close (many NaN close values).
+        dfs = []
+        for f in files[-2:]:
+            try:
+                dfs.append(pd.read_parquet(f))
+            except Exception:
+                pass
+        df = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
         if "ticker" in df.columns:
             tdf = df[df["ticker"] == ticker].copy()
             if tdf.empty:
                 return result
             tdf = tdf.sort_values("date") if "date" in tdf.columns else tdf
+            # Prefer rows with valid close; fall back to any row
+            tdf_valid = tdf[tdf["close"].notna()] if "close" in tdf.columns else tdf
+            if tdf_valid.empty:
+                tdf_valid = tdf
 
-            latest = tdf.iloc[-1]
+            latest = tdf_valid.iloc[-1]
             result["close"]       = latest.get("close")
             result["return_1d"]   = latest.get("return_1d")
             result["return_5d"]   = latest.get("return_5d")
             result["return_20d"]  = latest.get("return_20d")
             result["volume_ratio"]= latest.get("volume_ratio")
             result["volume"]      = latest.get("volume")
+            # Include the date of the latest data point so LLM can cite it
+            if latest.get("date") is not None:
+                d = latest["date"]
+                result["date"] = str(d.date()) if hasattr(d, "date") else str(d)[:10]
 
             # 20-day history as compact list
             cols = [c for c in ["date", "close", "volume", "return_1d"] if c in tdf.columns]
@@ -119,6 +137,210 @@ def _load_local_universe(ticker: str, market: str, data_dir: str) -> dict:
         return {}
 
 
+def _load_local_peers(ticker: str, market: str, data_dir: str) -> str:
+    """Find peer companies in the same industry/sector from local universe data.
+
+    Returns formatted text with peer tickers, names, price performance, and descriptions.
+    """
+    import glob as _glob
+
+    base = os.path.join(data_dir, "markets", market)
+
+    # Load universe
+    try:
+        uni = pd.read_parquet(os.path.join(base, "universe.parquet"))
+    except Exception as e:
+        return f"(local_peers: could not load universe — {e})"
+
+    # Normalize: strip exchange suffix (.SS, .SZ, .HK, .T, etc.) for local lookup
+    ticker_clean = ticker.split(".")[0] if "." in ticker else ticker
+    anchor_row = uni[uni["ticker"].astype(str) == ticker_clean]
+    if anchor_row.empty:
+        return f"(local_peers: ticker {ticker_clean} not found in {market} universe)"
+    ticker = ticker_clean  # use clean ticker for rest of function
+
+    anchor = anchor_row.iloc[0]
+    anchor_name = anchor.get("name", ticker)
+
+    # Determine industry/subsector and sector columns available
+    industry_col = None
+    for col in ("industry", "subsector"):
+        if col in uni.columns:
+            industry_col = col
+            break
+    sector_col = "sector" if "sector" in uni.columns else None
+
+    anchor_industry = anchor.get(industry_col) if industry_col else None
+    anchor_sector = anchor.get(sector_col) if sector_col else None
+
+    # Try industry-level peers first, fall back to sector
+    peers = pd.DataFrame()
+    match_level = "industry"
+    if anchor_industry and industry_col:
+        peers = uni[
+            (uni[industry_col] == anchor_industry) &
+            (uni["ticker"].astype(str) != ticker)
+        ]
+    if len(peers) < 3 and anchor_sector and sector_col:
+        peers = uni[
+            (uni[sector_col] == anchor_sector) &
+            (uni["ticker"].astype(str) != ticker)
+        ]
+        match_level = "sector"
+
+    if peers.empty:
+        return f"(local_peers: no peers found for {ticker} in {market})"
+
+    # Keyword-based relevance filter: if the anchor company name contains
+    # compute/server/storage keywords, prefer peers with matching keywords.
+    # This avoids lumping unrelated companies (e.g. 万集科技, 兆日科技) with
+    # server/AI-compute players (e.g. 浪潮信息, 海光信息).
+    _COMPUTE_KW = ["服务器", "算力", "计算", "存储", "数据", "信息", "智能", "芯片",
+                   "半导体", "处理器", "网络", "安全", "云", "IDC", "数创", "长城",
+                   "浪潮", "曙光", "超聚变", "同方", "麒麟", "鲲鹏"]
+    anchor_name_str = str(anchor_name)
+    if "name" in peers.columns and any(kw in anchor_name_str for kw in _COMPUTE_KW):
+        filtered = peers[peers["name"].apply(
+            lambda n: any(kw in str(n) for kw in _COMPUTE_KW)
+        )]
+        if len(filtered) >= 3:
+            peers = filtered
+
+    # Sort by market_cap if available, else by name
+    if "market_cap" in peers.columns:
+        peers = peers.sort_values("market_cap", ascending=False)
+    elif "name" in peers.columns:
+        peers = peers.sort_values("name")
+    peers = peers.head(15)
+
+    # Load latest price snapshot
+    price_snap = {}
+    files = sorted(_glob.glob(os.path.join(base, "market_daily_*.parquet")))
+    if files:
+        try:
+            # Read last 2 files so we can fall back to yesterday's close when
+            # today's snapshot was written before market close (NaN close values).
+            dfs = []
+            for f in files[-2:]:
+                try:
+                    dfs.append(pd.read_parquet(f))
+                except Exception:
+                    pass
+            if dfs:
+                df = pd.concat(dfs, ignore_index=True)
+                if "ticker" in df.columns and "date" in df.columns:
+                    # Keep only rows with valid close, then pick the most recent per ticker
+                    df_valid = df[df["close"].notna()] if "close" in df.columns else df
+                    if df_valid.empty:
+                        df_valid = df  # fallback: use any data if nothing has valid close
+                    df_valid = df_valid.sort_values("date").drop_duplicates("ticker", keep="last")
+                    for _, row in df_valid.iterrows():
+                        price_snap[str(row["ticker"])] = row
+        except Exception:
+            pass
+
+    # Load financials snapshot (latest annual + latest quarterly per ticker)
+    fin_snap = {}
+    fin_path = os.path.join(base, "financials.parquet")
+    if os.path.exists(fin_path):
+        try:
+            fin_df = pd.read_parquet(fin_path)
+            if not fin_df.empty and "ticker" in fin_df.columns and "period_end" in fin_df.columns:
+                fin_df["period_end"] = pd.to_datetime(fin_df["period_end"], errors="coerce")
+                fin_df = fin_df.dropna(subset=["period_end"])
+                for tkr, grp in fin_df.groupby("ticker"):
+                    annual = grp[grp["period_type"] == "annual"].sort_values("period_end")
+                    qtrly  = grp[grp["period_type"] == "quarterly"].sort_values("period_end")
+                    fin_snap[str(tkr)] = {
+                        "annual":  annual.iloc[-1].to_dict() if not annual.empty else None,
+                        "quarter": qtrly.iloc[-1].to_dict()  if not qtrly.empty  else None,
+                    }
+        except Exception:
+            pass
+
+    # Determine whether we have any financials data for the peers
+    any_fin = any(fin_snap.get(str(peer["ticker"])) for _, peer in peers.iterrows())
+    has_fin_cols = any_fin and any(
+        (fin_snap.get(str(peer["ticker"]), {}) or {}).get("annual")
+        for _, peer in peers.iterrows()
+    )
+
+    # ── Build markdown table ────────────────────────────────────────
+    industry_label = anchor_industry or anchor_sector or "N/A"
+    sector_label = anchor_sector or "N/A"
+
+    # Price table
+    price_header = "| Ticker | Name | Close | 1d | 20d | Vol Ratio |"
+    price_sep    = "|--------|------|-------|----|-----|-----------|"
+    price_rows = []
+
+    # Financials table (only built if we have fin data)
+    fin_header = "| Ticker | Name | Ann Period | Ann Rev (亿) | Ann NP (亿) | Latest Qtr | Qtr Rev (亿) | Qtr NP (亿) |"
+    fin_sep    = "|--------|------|------------|-------------|------------|------------|-------------|------------|"
+    fin_rows = []
+
+    def _fmt_pct(v):
+        if v is None: return "—"
+        try: return f"{float(v):+.1f}%"
+        except: return "—"
+
+    def _fmt_val(v, decimals=1):
+        if v is None: return "—"
+        try: return f"{float(v):.{decimals}f}"
+        except: return "—"
+
+    # Include anchor as first row
+    all_peers = [(ticker, anchor_name, price_snap.get(ticker), fin_snap.get(ticker, {}))]
+    for _, peer in peers.iterrows():
+        pt = str(peer["ticker"])
+        all_peers.append((pt, peer.get("name", pt), price_snap.get(pt), fin_snap.get(pt, {})))
+
+    for pticker, pname, snap, fin in all_peers:
+        # Price row (snap is a pandas Series or None)
+        close = _fmt_val(snap.get("close"), 2) if snap is not None else "—"
+        r1d   = _fmt_pct(snap.get("return_1d") * 100  if snap is not None and snap.get("return_1d")  is not None else None)
+        r20d  = _fmt_pct(snap.get("return_20d") * 100 if snap is not None and snap.get("return_20d") is not None else None)
+        vr    = f"{snap.get('volume_ratio'):.1f}x" if snap is not None and snap.get("volume_ratio") is not None else "—"
+        price_rows.append(f"| {pticker} | {pname} | {close} | {r1d} | {r20d} | {vr} |")
+
+        # Collect financials row with sort key (fiscal_year) for grouping later
+        if has_fin_cols:
+            ann = (fin or {}).get("annual") or {}
+            qtr = (fin or {}).get("quarter") or {}
+            fy       = ann.get("fiscal_year")
+            fy_label = str(fy) if fy else "—"
+            ann_rev  = _fmt_val(ann.get("revenue"))
+            ann_np   = _fmt_val(ann.get("net_profit"), 2)
+            ann_note = ""
+            if ann.get("revenue_yoy") is not None:
+                ann_note = f"({_fmt_pct(ann.get('revenue_yoy'))})"
+            qend     = str(qtr.get("period_end", ""))[:7] if qtr else "—"
+            qtr_rev  = _fmt_val(qtr.get("revenue"))
+            qtr_np   = _fmt_val(qtr.get("net_profit"), 2)
+            fin_rows.append((
+                fy or 0,  # sort key
+                f"| {pticker} | {pname} | FY{fy_label} | {ann_rev} {ann_note} | {ann_np} | {qend} | {qtr_rev} | {qtr_np} |"
+            ))
+
+    price_table = "\n".join([price_header, price_sep] + price_rows)
+
+    # Build financials table sorted by fiscal year descending (most recent first)
+    fin_table = ""
+    if has_fin_cols and fin_rows:
+        fin_rows_sorted = sorted(fin_rows, key=lambda x: x[0], reverse=True)
+        data_rows = [row for _, row in fin_rows_sorted]
+        fin_table = "\n".join([fin_header, fin_sep] + data_rows)
+
+    header = (
+        f"**Peers: {ticker} ({anchor_name})**  \n"
+        f"Industry: {industry_label} / Sector: {sector_label} ({market}, matched by {match_level})\n\n"
+    )
+    parts = [header + price_table]
+    if fin_table:
+        parts.append("\n**Financials (亿 local currency, YoY%)**\n\n" + fin_table)
+    return "\n".join(parts)
+
+
 def _load_cn_fundamentals(ticker: str) -> dict:
     """Fetch CN A-share valuation & financial data via akshare."""
     result = {}
@@ -144,8 +366,25 @@ def _load_cn_fundamentals(ticker: str) -> dict:
     return result
 
 
-def _load_yf_fundamentals(ticker: str) -> dict:
-    """Fetch fundamentals via yfinance for HK/JP/KR/other markets."""
+def _load_yf_fundamentals(ticker: str, market: str = None, data_dir: str = None) -> dict:
+    """Load fundamentals: pipeline cache first, then live yfinance fallback."""
+    # ── 1. Try pipeline cache (fundamentals.parquet written by DataAgent weekly) ──
+    if market and data_dir:
+        cache_path = os.path.join(data_dir, "markets", market, "fundamentals.parquet")
+        bare = ticker.split(".")[0]  # strip .HK etc.
+        try:
+            cache = pd.read_parquet(cache_path)
+            row = cache[cache["ticker"].astype(str) == bare]
+            if not row.empty:
+                d = row.iloc[0].dropna().to_dict()
+                d.pop("ticker", None)
+                d.pop("market", None)
+                if d:
+                    return d
+        except Exception:
+            pass
+
+    # ── 2. Live yfinance fetch (fallback when cache missing or stale) ──
     result = {}
     try:
         import yfinance as yf
@@ -305,7 +544,7 @@ def gather_data(ticker: str, market: str, data_dir: str) -> dict:
                       "UK": ".L", "BR": ".SA", "SA": ".SR"}
         suffix = _YF_SUFFIX.get(market, "")
         yf_ticker = ticker if (not suffix or ticker.endswith(suffix)) else ticker + suffix
-        fundamentals = _load_yf_fundamentals(yf_ticker)
+        fundamentals = _load_yf_fundamentals(yf_ticker, market=market, data_dir=data_dir)
 
     return {
         "ticker":       ticker,
@@ -329,8 +568,11 @@ def _price_summary(price: dict) -> str:
     if not price:
         return "No price data available from local pipeline."
     lines = []
+    date_str = price.get("date", "")
+    if date_str:
+        lines.append(f"Data date: {date_str}")
     if price.get("close"):      lines.append(f"Close: {price['close']}")
-    if price.get("return_1d") is not None: lines.append(f"1d return: {price['return_1d']:+.2%}")
+    if price.get("return_1d") is not None: lines.append(f"1d return ({date_str}): {price['return_1d']:+.2%}")
     if price.get("return_5d") is not None: lines.append(f"5d return: {price['return_5d']:+.2%}")
     if price.get("return_20d") is not None: lines.append(f"20d return: {price['return_20d']:+.2%}")
     if price.get("volume_ratio") is not None:
@@ -339,8 +581,13 @@ def _price_summary(price: dict) -> str:
         lines.append(f"Volume ratio: {vr:.2f}x{flag}")
     hist = price.get("history", [])
     if hist:
-        closes = [str(round(h["close"], 2)) for h in hist if h.get("close")]
-        lines.append(f"20d close history: [{', '.join(closes[-10:])}]")
+        # Show last 10 days with dates
+        recent = [h for h in hist if h.get("close")][-10:]
+        entries = []
+        for h in recent:
+            d = str(h["date"])[:10] if h.get("date") else ""
+            entries.append(f"{d}:{round(h['close'], 2)}")
+        lines.append(f"Recent close history: [{', '.join(entries)}]")
     return "\n".join(lines)
 
 
@@ -373,13 +620,17 @@ def run_market_analyst(data: dict, provider: str, api_key: str) -> str:
         lines = []
         for idx in indices:
             chg = f"{idx['change_1d_pct']:+.2f}%" if idx.get("change_1d_pct") is not None else "N/A"
-            lines.append(f"  {idx['name']} ({idx['symbol']}): {idx['latest_close']} ({chg} today)")
+            latest_date = idx["5d_history"][-1]["date"] if idx.get("5d_history") else ""
+            date_note = f" on {latest_date}" if latest_date else ""
+            lines.append(f"  {idx['name']} ({idx['symbol']}): {idx['latest_close']} ({chg}{date_note})")
         index_text = "MARKET INDICES (benchmark context):\n" + "\n".join(lines) + "\n\n"
     system = (
         "You are a technical market analyst. Analyze the provided price and volume data. "
         "Compare the stock's performance to the market index (relative strength). "
         "Be concise. Output 3-5 bullet points covering: trend direction, volume signal, "
-        "performance vs index, and momentum. Plain language, beginner-friendly."
+        "performance vs index, and momentum. Plain language, beginner-friendly. "
+        "ALWAYS use the exact date from the data (e.g. '2026-04-02') when referencing any price or index move. "
+        "NEVER use vague terms like 'today', 'yesterday', 'last trading day', or 'recently' — always state the specific date."
     )
     user = (
         f"Stock: {name} ({ticker})\n\n"
@@ -396,6 +647,30 @@ def run_fundamentals_analyst(data: dict, provider: str, api_key: str) -> str:
     name   = data["info"].get("name", ticker)
     fund   = data["fundamentals"]
     info   = data["info"]
+    market = data.get("market", "")
+
+    # If yfinance returned nothing (SSL errors, rate-limit, etc.), fall back to web search
+    web_fund_text = ""
+    if not fund:
+        try:
+            try:
+                from web.agent_llm import _web_search, _apply_market_suffix
+            except ImportError:
+                from agent_llm import _web_search, _apply_market_suffix
+            _YF_SUFFIX = {"HK": ".HK", "JP": ".T", "AU": ".AX", "IN": ".NS",
+                          "KR": ".KS", "TW": ".TW", "DE": ".DE", "FR": ".PA",
+                          "UK": ".L", "BR": ".SA", "SA": ".SR"}
+            suffix = _YF_SUFFIX.get(market, "")
+            yf_ticker = ticker if (not suffix or ticker.endswith(suffix)) else ticker + suffix
+            r1 = _web_search(
+                f'"{name}" {yf_ticker} annual revenue profit earnings 2024 2025 results',
+                max_results=4, body_chars=700)
+            r2 = _web_search(
+                f'{yf_ticker} PE ratio valuation analyst target 2025',
+                max_results=3, body_chars=600)
+            web_fund_text = f"=== Web search fallback (yfinance unavailable) ===\n{r1}\n\n{r2}"
+        except Exception:
+            pass
 
     system = (
         "You are a fundamental analyst. Assess the company's financial health using the exact numbers provided. "
@@ -404,7 +679,8 @@ def run_fundamentals_analyst(data: dict, provider: str, api_key: str) -> str:
         "Cover: (1) latest quarterly revenue & profit with YoY comparison, "
         "(2) valuation multiples (P/E, P/B, forward P/E), "
         "(3) profitability margins, (4) debt situation. "
-        "Be concise and beginner-friendly. If a number is missing, say so explicitly."
+        "Be concise and beginner-friendly. If a number is missing, say so explicitly. "
+        "NEVER start with 'I'm sorry' or 'Unfortunately' — lead with what data you DO have."
     )
     # Separate out analyst ratings to highlight them
     analyst_text = ""
@@ -421,11 +697,17 @@ def run_fundamentals_analyst(data: dict, provider: str, api_key: str) -> str:
             parts.append(f"Recent rating changes (last 5): {json.dumps(changes, ensure_ascii=False, default=str)}")
         analyst_text = "\n\nANALYST RATINGS:\n" + "\n".join(parts)
 
-    fund_text = _fmt(fund)[:1800] if fund else "No fundamental data available."
+    if fund:
+        fund_text = f"FUNDAMENTAL DATA (yfinance):\n{_fmt(fund)[:1800]}"
+    elif web_fund_text:
+        fund_text = f"FUNDAMENTAL DATA (web search — yfinance unavailable):\n{web_fund_text[:2000]}"
+    else:
+        fund_text = "Fundamental data unavailable from both yfinance and web search."
+
     user = (
         f"Stock: {name} ({ticker})\n"
         f"Sector: {info.get('sector', 'N/A')}  Industry: {info.get('industry', 'N/A')}\n\n"
-        f"FUNDAMENTAL DATA (use these exact numbers in your analysis):\n{fund_text}"
+        f"{fund_text}"
         f"{analyst_text}\n\n"
         "Write a concise fundamentals analysis (max 250 words). "
         "You MUST include specific numbers — do not generalize. "
@@ -437,45 +719,61 @@ def run_fundamentals_analyst(data: dict, provider: str, api_key: str) -> str:
 def run_news_analyst(data: dict, provider: str, api_key: str) -> str:
     ticker = data["ticker"]
     name   = data["info"].get("name", ticker)
+    market = data.get("market", "")
     news   = data["news"]
 
-    # Always fetch live web news to supplement (or replace) local cached data.
-    # Local cache may be stale or contain keyword-mismatched articles.
     try:
-        from web.agent_llm import _web_search
+        from web.agent_llm import _web_search, _apply_market_suffix
     except ImportError:
-        from agent_llm import _web_search
-    query = f"{name} {ticker} stock news"
-    web_raw = _web_search(query, max_results=6)
-    urls = [l.strip() for l in web_raw.split("\n") if l.strip().startswith("http")]
-    web_sources = "\n\n*Sources: " + " · ".join(urls[:4]) + "*" if urls else ""
+        from agent_llm import _web_search, _apply_market_suffix
+
+    # Build a short, searchable name (drop legal suffixes that hurt search quality)
+    short_name = name.split("(")[0].strip() if "(" in name else name
+    short_name = short_name.replace(" Company Limited", "").replace(" Co., Ltd", "").strip()
+    yf_ticker = _apply_market_suffix(ticker, market)
+
+    # Run two targeted searches: recent news + earnings/results
+    web_parts = []
+    web_parts.append(_web_search(
+        f"{short_name} {yf_ticker} news 2025",
+        max_results=4, body_chars=600))
+    web_parts.append(_web_search(
+        f"{short_name} earnings results analyst 2025",
+        max_results=3, body_chars=600))
+    web_raw = "\n\n".join(web_parts)
 
     if news:
-        # Combine: local pipeline headlines + live web results
         news_text = (
-            "=== Local pipeline (cached) ===\n" + _fmt(news)[:800] +
-            "\n\n=== Live web search ===\n" + web_raw[:800]
+            "=== Local pipeline (cached headlines) ===\n" + _fmt(news)[:600] +
+            "\n\n=== Live web search ===\n" + web_raw[:2000]
         )
         source_label = "local pipeline + live web search"
     else:
-        news_text = web_raw[:1500]
+        news_text = web_raw[:2500]
         source_label = "live web search"
 
     system = (
-        "You are a news and sentiment analyst. Assess recent news for this stock. "
-        "Identify positive/negative catalysts and overall market sentiment. "
-        "Prioritise the most recent and relevant articles. Discard any articles that are "
-        "clearly unrelated to this company. Be concise and beginner-friendly."
+        "You are a news and sentiment analyst. Summarise ALL available information about this stock. "
+        "NEVER say there is 'no news' or dismiss results as 'general information' — "
+        "use everything in the search results, even company profile snippets or stock page descriptions. "
+        "Extract: (1) any recent events, earnings, product launches, or partnerships, "
+        "(2) overall investor sentiment from the language used, "
+        "(3) any specific numbers (revenue, profit, growth%) mentioned. "
+        "CITATION FORMAT: after each claim, include a markdown link — example: "
+        "'Sales grew 12% *(The Edge Singapore: https://theedgesingapore.com/...)* ' "
+        "The URL is in the search results on the line after the body text. Use it. "
+        "Be concise and beginner-friendly. NEVER start with 'Unfortunately' or 'I'm sorry'."
     )
     user = (
         f"Stock: {name} ({ticker})\n"
         f"News source: {source_label}\n\n"
-        f"RECENT NEWS:\n{news_text}\n\n"
+        f"SEARCH RESULTS (format: • Title / body / URL on next line):\n{news_text}\n\n"
         "Write a concise news/sentiment analysis (max 200 words). "
-        "If an article is clearly not about this company, ignore it."
+        "For every claim, add an inline markdown link using the URL from the search result. "
+        "Example: 'Revenue ¥43B *([Yahoo Finance](https://finance.yahoo.com/...))*' "
+        "Include any numbers you find."
     )
-    result = _call_llm(system, user, provider, api_key, max_tokens=400)
-    return result + web_sources
+    return _call_llm(system, user, provider, api_key, max_tokens=400)
 
 
 def run_bull_researcher(ticker: str, name: str,
@@ -757,11 +1055,22 @@ def _gather_sector_data(sector_query: str, market: str, data_dir: str) -> dict:
     price_rows = pd.DataFrame()
     if files:
         try:
-            df = pd.read_parquet(files[-1])
-            if "ticker" in df.columns:
-                df = df.sort_values("date") if "date" in df.columns else df
-                df = df.groupby("ticker").last().reset_index()
-                price_rows = df[df["ticker"].isin(tickers)].copy()
+            dfs = []
+            for f in files[-2:]:
+                try:
+                    dfs.append(pd.read_parquet(f))
+                except Exception:
+                    pass
+            if dfs:
+                df = pd.concat(dfs, ignore_index=True)
+                if "ticker" in df.columns:
+                    df = df.sort_values("date") if "date" in df.columns else df
+                    # Keep most recent valid close per ticker
+                    df_valid = df[df["close"].notna()] if "close" in df.columns else df
+                    if df_valid.empty:
+                        df_valid = df
+                    df = df_valid.groupby("ticker").last().reset_index()
+                    price_rows = df[df["ticker"].isin(tickers)].copy()
         except Exception:
             pass
 
@@ -970,6 +1279,196 @@ def _web_sector_analyze(sector_query: str, markets: list, date: str,
         f"{analysis}"
         f"{sources_footer}"
     )
+
+
+def local_peers_analyze(ticker: str, market: str, data_dir: str) -> str:
+    """Fixed-format peer comparison report using local price/universe data.
+
+    Produces a structured report with peer performance table, relative strength
+    ranking, volume activity, and a summary — similar to local_sector_analyze.
+    """
+    try:
+        from web.agent_llm import get_llm_provider
+    except ImportError:
+        from agent_llm import get_llm_provider
+
+    provider, api_key = get_llm_provider()
+    if not provider:
+        return "⚙ LLM API key not configured."
+
+    date = __import__("datetime").datetime.now().strftime("%Y-%m-%d")
+
+    # ── 1. Load peer data ────────────────────────────────────────────
+    # Normalize ticker — strip exchange suffix (.SS, .SZ, .HK, etc.)
+    ticker = ticker.split(".")[0] if "." in ticker else ticker
+
+    raw = _load_local_peers(ticker, market, data_dir)
+    if raw.startswith("(local_peers:"):
+        return f"# Peer Comparison: {ticker}\n\n{raw}"
+
+    # ── 2. Also load anchor stock's own price data ───────────────────
+    anchor_info = _load_local_universe(ticker, market, data_dir)
+    anchor_price = _load_local_price(ticker, market, data_dir)
+    anchor_name = anchor_info.get("name", ticker)
+    anchor_sector = anchor_info.get("sector", "N/A")
+    anchor_industry = anchor_info.get("industry") or anchor_info.get("subsector", "N/A")
+
+    anchor_line = f"{ticker} ({anchor_name})"
+    if anchor_price:
+        c = anchor_price.get("close")
+        r1 = anchor_price.get("return_1d")
+        r20 = anchor_price.get("return_20d")
+        vr = anchor_price.get("volume_ratio")
+        parts = []
+        if c is not None:   parts.append(f"close={c:.2f}" if isinstance(c, float) else f"close={c}")
+        if r1 is not None:  parts.append(f"1d={r1:+.1%}")
+        if r20 is not None: parts.append(f"20d={r20:+.1%}")
+        if vr is not None:  parts.append(f"vol_ratio={vr:.1f}x")
+        if parts:
+            anchor_line += " | " + " | ".join(parts)
+
+    # ── 3. Load financials snapshot ──────────────────────────────────
+    fin_snap = {}
+    fin_path = os.path.join(data_dir, "markets", market, "financials.parquet")
+    if os.path.exists(fin_path):
+        try:
+            fin_df = pd.read_parquet(fin_path)
+            if not fin_df.empty and "ticker" in fin_df.columns and "period_end" in fin_df.columns:
+                fin_df["period_end"] = pd.to_datetime(fin_df["period_end"], errors="coerce")
+                fin_df = fin_df.dropna(subset=["period_end"])
+                for tkr, grp in fin_df.groupby("ticker"):
+                    annual = grp[grp["period_type"] == "annual"].sort_values("period_end")
+                    qtrly  = grp[grp["period_type"] == "quarterly"].sort_values("period_end")
+                    fin_snap[str(tkr)] = {
+                        "annual":  annual.iloc[-1].to_dict() if not annual.empty else None,
+                        "quarter": qtrly.iloc[-1].to_dict()  if not qtrly.empty  else None,
+                    }
+        except Exception:
+            pass
+
+    # Build financials table text
+    def _fin_row(tkr, name, fin):
+        ann = fin.get("annual")  if fin else None
+        qtr = fin.get("quarter") if fin else None
+        row = f"{tkr} ({name})"
+        if ann:
+            fy  = ann.get("fiscal_year") or str(ann.get("period_end", ""))[:4]
+            rev = ann.get("revenue"); ry = ann.get("revenue_yoy")
+            np_ = ann.get("net_profit"); ny = ann.get("net_profit_yoy")
+            parts = []
+            if rev is not None: parts.append(f"rev={rev:.1f}亿" + (f"({ry:+.1f}%)" if ry is not None else ""))
+            if np_  is not None: parts.append(f"NP={np_:.2f}亿" + (f"({ny:+.1f}%)" if ny is not None else ""))
+            if parts: row += f" | FY{fy}: {', '.join(parts)}"
+        if qtr:
+            qend = str(qtr.get("period_end", ""))[:10]
+            rev  = qtr.get("revenue"); ry = qtr.get("revenue_yoy")
+            np_  = qtr.get("net_profit"); ny = qtr.get("net_profit_yoy")
+            parts = []
+            if rev is not None: parts.append(f"rev={rev:.1f}亿" + (f"({ry:+.1f}%)" if ry is not None else ""))
+            if np_  is not None: parts.append(f"NP={np_:.2f}亿" + (f"({ny:+.1f}%)" if ny is not None else ""))
+            if parts: row += f" | {qend}: {', '.join(parts)}"
+        return row
+
+    # Parse ticker+name from the markdown table rows in raw
+    # Table rows look like: | Ticker | Name | Close | ... (skip header/sep rows)
+    fin_lines = [_fin_row(ticker, anchor_name, fin_snap.get(ticker, {}))]
+    for line in raw.split("\n"):
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.split("|") if c.strip()]
+        if len(cells) < 2:
+            continue
+        tk = cells[0]
+        nm = cells[1]
+        # Skip header rows (Ticker, 代码, ---, etc.) and separator rows
+        if tk in ("Ticker", "代码", "---", "------") or tk.startswith("---"):
+            continue
+        if tk and tk != ticker:
+            fin_lines.append(_fin_row(tk, nm, fin_snap.get(tk, {})))
+
+    fin_block = "\n".join(fin_lines) if fin_lines else "(no financials data available)"
+    has_financials = any("|" in l and ("FY" in l or "Q" in l or "rev=" in l) for l in fin_lines)
+
+    # ── 4. Build compact data block for LLM ─────────────────────────
+    data_block = (
+        f"ANCHOR: {anchor_line}\n"
+        f"Industry: {anchor_industry} / Sector: {anchor_sector}\n\n"
+        f"PEERS:\n{raw}"
+    )
+
+    def _step(label, system, user, max_tok=400):
+        try:
+            return _call_llm(system, user, provider, api_key, max_tokens=max_tok) or f"({label}: no output)"
+        except Exception as e:
+            return f"({label} unavailable: {e})"
+
+    # ── 5. Agent 1: Relative strength ranking ───────────────────────
+    ranking = _step("Ranking",
+        "You are a relative strength analyst. The data table is already shown to the user — "
+        "do NOT repeat numbers from it. Provide only the ranking order and one-line interpretation per stock.",
+        f"Date: {date}\n\n{data_block}\n\n"
+        "Rank all peers strongest→weakest by 20d return. "
+        "Format: `TICKER Name — one-line reason why it ranks here.` "
+        "No numbers (they are in the table). Max 150 words.",
+        300)
+
+    # ── 6. Agent 2: Volume & activity analysis ───────────────────────
+    volume = _step("Volume",
+        "You are a volume and market activity analyst. The data table is already shown — "
+        "do NOT repeat vol_ratio or price numbers. Only name the stocks with notable volume and interpret the signal.",
+        f"Date: {date}\n\n{data_block}\n\n"
+        "List only stocks with vol_ratio > 1.5x. For each: ticker, name, "
+        "and whether it signals accumulation or distribution — one line each. Max 80 words.",
+        200)
+
+    # ── 7. Agent 3: Financials summary (only if data available) ──────
+    fin_section = ""
+    if has_financials:
+        fin_section = _step("Financials",
+            "You are a fundamental analyst. The financials table is already shown to the user — "
+            "do NOT repeat revenue or profit figures. Provide interpretation only.",
+            f"Date: {date}\n\nFinancials data:\n{fin_block}\n\n"
+            "Answer in 3 bullets (no numbers, refer to tickers by name): "
+            "1. Who leads on revenue growth and why it matters. "
+            "2. Who is most profitable vs who is burning cash. "
+            "3. Any notable divergence worth watching. Max 120 words.",
+            250)
+
+    # ── 8. Agent 4: Summary verdict ──────────────────────────────────
+    verdict = _step("Verdict",
+        "You are a peer comparison strategist. Give a concise verdict on the anchor stock's "
+        "relative position vs its peers. Format exactly:\n"
+        "**Relative Position: Leader / Middle / Laggard**\n"
+        "**Key divergence:** 1 sentence comparing anchor to top peer.\n"
+        "**Watch:** 1-2 peer tickers worth monitoring and why.\n"
+        "**Beginner takeaway:** 1 plain-language sentence.",
+        f"Anchor: {ticker} ({anchor_name})  Date: {date}\n\n"
+        f"Ranking:\n{ranking[:400]}\n\nVolume:\n{volume[:200]}\n\n"
+        + (f"Financials:\n{fin_section[:300]}\n\n" if fin_section else "")
+        + "Final peer comparison verdict.",
+        300)
+
+    # ── 9. Assemble fixed-format report ─────────────────────────────
+    sections = [
+        f"# Peer Comparison: {ticker} ({anchor_name})",
+        f"*Industry: {anchor_industry} · Sector: {anchor_sector} · {market} · {date}*",
+        "",
+        "---",
+        "## 📊 Peer Data",
+        f"**Anchor:** {anchor_line}",
+        "",
+        raw,
+        "",
+        "## 🏆 Relative Strength Ranking",
+        ranking,
+        "",
+        "## 📦 Volume Activity",
+        volume,
+    ]
+    if fin_section:
+        sections += ["", "## 💰 Financials", fin_section]
+    sections += ["", "## 💡 Verdict", verdict]
+    return "\n".join(sections)
 
 
 def local_sector_analyze(sector_query: str, market: str, data_dir: str) -> str:

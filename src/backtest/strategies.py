@@ -58,7 +58,10 @@ def _momentum(closes: pd.Series) -> float:
     """Simple price momentum: last / first - 1."""
     if closes is None or len(closes) < 2:
         return float("-inf")
-    return float(closes.iloc[-1] / closes.iloc[0] - 1)
+    first = closes.iloc[0]
+    if not first or first <= 0:
+        return float("-inf")
+    return float(closes.iloc[-1] / first - 1)
 
 
 # ---------------------------------------------------------------------------

@@ -15,12 +15,27 @@ log = get_logger("market.yf")
 _BATCH_SIZE = 50
 
 
-def _yf_download_with_retry(symbols_str, period, max_retries=3, **kwargs):
-    """yf.download with exponential backoff on rate limit errors."""
+def _yf_download_with_retry(symbols_str, period, max_retries=3, timeout=120, **kwargs):
+    """yf.download with exponential backoff on rate limit errors and a hard timeout."""
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+
+    def _download():
+        with yf_limiter:
+            return yf.download(symbols_str, period=period, **kwargs)
+
     for attempt in range(max_retries):
         try:
-            with yf_limiter:
-                return yf.download(symbols_str, period=period, **kwargs)
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                fut = pool.submit(_download)
+                try:
+                    return fut.result(timeout=timeout)
+                except FutureTimeout:
+                    log.warning(f"yf.download timed out after {timeout}s (attempt {attempt+1}/{max_retries})")
+                    fut.cancel()
+                    if attempt == max_retries - 1:
+                        return pd.DataFrame()
+                    time.sleep(5)
+                    continue
         except Exception as e:
             msg = str(e)
             if "rate" in msg.lower() or "429" in msg or "too many" in msg.lower():
@@ -29,9 +44,7 @@ def _yf_download_with_retry(symbols_str, period, max_retries=3, **kwargs):
                 time.sleep(wait)
             else:
                 raise
-    # Final attempt without catching
-    with yf_limiter:
-        return yf.download(symbols_str, period=period, **kwargs)
+    return pd.DataFrame()
 
 
 def _build_yf_symbol(ticker: str, market: str) -> str:

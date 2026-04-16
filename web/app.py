@@ -1377,7 +1377,43 @@ def market_page(market_code=None):
         for _, row in last_day.iterrows():
             latest[row["ticker"]] = row.to_dict()
         for ticker, grp in full.groupby("ticker"):
-            ticker_history[ticker] = grp.sort_values("date")["close"].dropna().tail(30).tolist()
+            grp_sorted = grp.sort_values("date").tail(30)
+            ticker_history[ticker] = {
+                "sparkline_closes": grp_sorted["close"].dropna().tolist(),
+                "daily": [
+                    {
+                        "date": str(r["date"])[:10] if r.get("date") is not None else "",
+                        "close": round(float(r["close"]), 2) if pd.notna(r.get("close")) else None,
+                        "return_1d": round(float(r["return_1d"]) * 100, 2) if pd.notna(r.get("return_1d")) else None,
+                        "volume": int(r["volume"]) if pd.notna(r.get("volume")) else None,
+                        "volume_ratio": round(float(r["volume_ratio"]), 2) if pd.notna(r.get("volume_ratio")) else None,
+                    }
+                    for _, r in grp_sorted.iterrows()
+                ],
+            }
+
+    # Load financials snapshots per market (latest annual + latest quarterly per ticker)
+    fin_by_ticker = {}  # ticker → {"annual": {...}, "quarter": {...}}
+    _data_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "markets")
+    for mc in market_codes:
+        fin_path = os.path.join(_data_root, mc, "financials.parquet")
+        if not os.path.exists(fin_path):
+            continue
+        try:
+            fin_df = pd.read_parquet(fin_path)
+            if fin_df.empty or "ticker" not in fin_df.columns or "period_end" not in fin_df.columns:
+                continue
+            fin_df["period_end"] = pd.to_datetime(fin_df["period_end"], errors="coerce")
+            fin_df = fin_df.dropna(subset=["period_end"])
+            for tkr, grp in fin_df.groupby("ticker"):
+                ann = grp[grp["period_type"] == "annual"].sort_values("period_end")
+                qtr = grp[grp["period_type"] == "quarterly"].sort_values("period_end")
+                fin_by_ticker[str(tkr)] = {
+                    "annual":  ann.iloc[-1].to_dict() if not ann.empty else None,
+                    "quarter": qtr.iloc[-1].to_dict() if not qtr.empty else None,
+                }
+        except Exception:
+            pass
 
     # Build combined stocks list per market
     stocks_by_market = {}
@@ -1411,6 +1447,9 @@ def market_page(market_code=None):
 
             mc_val = cap_lookup.get(ticker) or mkt.get("market_cap")
 
+            fin = fin_by_ticker.get(str(ticker), {})
+            fin_ann = fin.get("annual") or {}
+            fin_qtr = fin.get("quarter") or {}
             stock = {
                 "ticker": ticker,
                 "name": name,
@@ -1426,7 +1465,19 @@ def market_page(market_code=None):
                 "volume": mkt.get("volume"),
                 "volume_ratio": mkt.get("volume_ratio"),
                 "market_cap": mc_val,
-                "sparkline": _sparkline(ticker_history.get(ticker, [])),
+                "sparkline": _sparkline(ticker_history.get(ticker, {}).get("sparkline_closes", []) if isinstance(ticker_history.get(ticker), dict) else ticker_history.get(ticker, [])),
+                "history": ticker_history.get(ticker, {}).get("daily", []) if isinstance(ticker_history.get(ticker), dict) else [],
+                # Financials
+                "fin_ann_fy":      fin_ann.get("fiscal_year"),
+                "fin_ann_rev":     fin_ann.get("revenue"),
+                "fin_ann_rev_yoy": fin_ann.get("revenue_yoy"),
+                "fin_ann_np":      fin_ann.get("net_profit"),
+                "fin_ann_np_yoy":  fin_ann.get("net_profit_yoy"),
+                "fin_qtr_end":     str(fin_qtr.get("period_end", ""))[:10] if fin_qtr else None,
+                "fin_qtr_rev":     fin_qtr.get("revenue"),
+                "fin_qtr_rev_yoy": fin_qtr.get("revenue_yoy"),
+                "fin_qtr_np":      fin_qtr.get("net_profit"),
+                "fin_qtr_np_yoy":  fin_qtr.get("net_profit_yoy"),
             }
             stocks_by_market[market].append(stock)
     else:
@@ -1481,7 +1532,8 @@ def market_page(market_code=None):
         with_returns = [s for s in stocks if s.get("return_1d") is not None
                         and s["return_1d"] == s["return_1d"]]
         for s in with_returns:
-            prices = ticker_history.get(s["ticker"], [])
+            th = ticker_history.get(s["ticker"], [])
+            prices = th.get("sparkline_closes", []) if isinstance(th, dict) else th
             s["sparkline"] = _sparkline(prices)
 
         sorted_by_ret = sorted(with_returns, key=lambda s: s["return_1d"], reverse=True)
@@ -2088,6 +2140,7 @@ def api_agent_chat():
     message = (body.get("message", "") or "").strip()
     history = body.get("history", [])
     language = body.get("language", "English")
+    context = body.get("context", {})  # carries resolved ticker across turns
 
     if not agent_name:
         return jsonify({"response": "No agent specified."}), 400
@@ -2107,9 +2160,15 @@ def api_agent_chat():
     try:
         project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         data_dir = os.path.join(project_dir, "data")
-        llm_response = agent_chat(agent_type, market, message, data_dir, history, language=language)
-        if llm_response is not None:
-            return jsonify({"response": llm_response})
+        result = agent_chat(agent_type, market, message, data_dir, history,
+                            language=language, context=context)
+        # agent_chat returns (response, context) tuple
+        if isinstance(result, tuple):
+            llm_response, new_context = result
+        else:
+            llm_response, new_context = result, context
+        if llm_response:
+            return jsonify({"response": llm_response, "context": new_context})
     except Exception as e:
         app.logger.warning(f"LLM chat failed: {e}")
 
@@ -2119,7 +2178,7 @@ def api_agent_chat():
     except Exception as e:
         response = f"Sorry, I encountered an error: {str(e)}"
 
-    return jsonify({"response": response})
+    return jsonify({"response": response or "Sorry, no data available for this query."})
 
 
 # ---------------------------------------------------------------------------
@@ -2423,6 +2482,16 @@ def api_backtest_run():
 
     if timeframe not in ("daily", "weekly", "monthly", "yearly"):
         return jsonify({"error": f"Unknown timeframe {timeframe!r}"}), 400
+
+    # Validate date format
+    from datetime import datetime as _dt
+    for _label, _val in (("start_date", start_date), ("end_date", end_date)):
+        try:
+            _dt.strptime(_val, "%Y-%m-%d")
+        except (ValueError, TypeError):
+            return jsonify({"error": f"Invalid {_label} format, expected YYYY-MM-DD"}), 400
+    if start_date >= end_date:
+        return jsonify({"error": "start_date must be before end_date"}), 400
 
     try:
         result = run_backtest(
@@ -2955,6 +3024,9 @@ def _signal_agent_response(market, message):
             get_data_path("markets", market, f"market_daily_{today}.parquet")
         )
         if not snap.empty and "return_1d" in snap.columns:
+            # Deduplicate to latest row per ticker (parquet may contain multi-day rows)
+            if "ticker" in snap.columns and "date" in snap.columns:
+                snap = snap.sort_values("date").drop_duplicates("ticker", keep="last")
             valid = snap.dropna(subset=["return_1d"])
             if not valid.empty:
                 avg_ret = valid["return_1d"].mean()

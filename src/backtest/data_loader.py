@@ -46,7 +46,11 @@ def _standardise(df: pd.DataFrame) -> pd.DataFrame:
     for col in ["open", "high", "low", "close", "volume"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
-    return df[["date", "open", "high", "low", "close", "volume"]].dropna(subset=["close"])
+    # Only select columns that are present; volume is optional
+    keep = [c for c in ["date", "open", "high", "low", "close", "volume"] if c in df.columns]
+    if "close" not in keep:
+        return pd.DataFrame()
+    return df[keep].dropna(subset=["close"])
 
 
 def _fetch_yf_batch(yf_symbols: list[str], start: str, end: str) -> dict[str, pd.DataFrame]:
@@ -73,15 +77,15 @@ def _fetch_yf_batch(yf_symbols: list[str], start: str, end: str) -> dict[str, pd
             df = raw.reset_index()
             df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
             result[sym] = _standardise(df)
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug(f"Failed to parse yf data for {sym}: {e}")
     else:
         for sym in yf_symbols:
             try:
                 df = raw[sym].dropna(how="all").reset_index()
                 result[sym] = _standardise(df)
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug(f"Failed to parse yf data for {sym}: {e}")
     return result
 
 

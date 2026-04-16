@@ -9,37 +9,48 @@ log = get_logger("capital.northbound")
 def fetch_northbound_flow():
     """Fetch daily northbound (北向资金) net flow data.
 
-    Uses the historical endpoint (stock_hsgt_hist_em) which has data back to
-    ~2015. The live summary endpoint stopped providing flow values after
-    Aug 2024, so we rely on the historical series and fall back to today's
-    summary only if the hist data has a gap.
+    NOTE: China's exchanges discontinued public northbound flow reporting after
+    August 2024. The stock_hsgt_hist_em endpoint returns NaN for 当日成交净买额
+    from Aug 17, 2024 onwards. No alternative akshare endpoint provides this
+    data post-cutoff. The returned DataFrame will only contain data up to the
+    last valid date (~Aug 16, 2024).
     """
-    try:
-        df = ak.stock_hsgt_hist_em(symbol="北向资金")
-        if df is None or df.empty:
-            return pd.DataFrame()
+    # Combine 沪股通 + 深股通 to reconstruct total northbound
+    frames = []
+    for symbol in ("沪股通", "深股通"):
+        try:
+            df = ak.stock_hsgt_hist_em(symbol=symbol)
+            if df is None or df.empty:
+                continue
+            flow_col = "当日成交净买额"
+            date_col = "日期"
+            if flow_col not in df.columns or date_col not in df.columns:
+                log.warning(f"[{symbol}] Unexpected columns: {df.columns.tolist()}")
+                continue
+            df = df[[date_col, flow_col]].rename(columns={date_col: "date", flow_col: "net_flow"})
+            df["date"] = pd.to_datetime(df["date"])
+            df = df.dropna(subset=["net_flow"])
+            frames.append(df)
+        except Exception as e:
+            log.warning(f"[{symbol}] fetch failed: {e}")
 
-        # The column 当日成交净买额 is the daily net buy (hundred millions CNY)
-        flow_col = "当日成交净买额"
-        date_col = "日期"
-        if flow_col not in df.columns or date_col not in df.columns:
-            log.warning(f"Unexpected columns: {df.columns.tolist()}")
-            return pd.DataFrame()
-
-        df = df[[date_col, flow_col]].rename(columns={date_col: "date", flow_col: "net_flow"})
-        df["date"] = pd.to_datetime(df["date"])
-        df = df.dropna(subset=["net_flow"])
-        df = df.sort_values("date").reset_index(drop=True)
-
-        if df.empty:
-            log.warning("No valid northbound flow rows after filtering NaN")
-            return pd.DataFrame()
-
-        log.info(f"Fetched northbound flow: {len(df)} days (up to {df.iloc[-1]['date'].date()})")
-        return df
-    except Exception as e:
-        log.warning(f"Failed to fetch northbound flow: {e}")
+    if not frames:
+        log.warning("No valid northbound flow data from either 沪股通 or 深股通")
         return pd.DataFrame()
+
+    # Sum both channels per date
+    combined = pd.concat(frames, ignore_index=True)
+    combined = combined.groupby("date", as_index=False)["net_flow"].sum()
+    combined = combined.sort_values("date").reset_index(drop=True)
+
+    last_date = combined.iloc[-1]["date"].date()
+    log.info(f"Fetched northbound flow: {len(combined)} days (up to {last_date})")
+    if (pd.Timestamp.today() - combined.iloc[-1]["date"]).days > 30:
+        log.warning(
+            f"CN northbound flow data ends at {last_date}. "
+            "China exchanges discontinued northbound flow reporting after Aug 2024."
+        )
+    return combined
 
 
 def fetch_northbound_holdings():

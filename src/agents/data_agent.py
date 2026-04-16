@@ -138,6 +138,29 @@ class DataAgent(BaseAgent):
                     pass
             indices.to_parquet(idx_path, index=False)
 
+        # Step 5: Fundamentals cache (weekly refresh — non-CN markets only)
+        # CN uses akshare in local_trading_agent; HK/JP/etc. use yfinance.
+        if self.market != "CN":
+            fund_path = get_data_path("markets", self.market, "fundamentals.parquet")
+            fund_stale = True
+            if os.path.exists(fund_path):
+                age = datetime.now() - datetime.fromtimestamp(os.path.getmtime(fund_path))
+                if age.days < 7:
+                    fund_stale = False
+                    log.info(f"[{self.name}] Fundamentals cache is {age.days}d old, skipping")
+            if fund_stale:
+                self.update_status(progress="Fetching fundamentals (weekly)...")
+                try:
+                    from src.financials.yf_fundamentals import fetch_yf_fundamentals_batch
+                    fund_df = fetch_yf_fundamentals_batch(tickers, self.market, limit=60)
+                    if not fund_df.empty:
+                        fund_df.to_parquet(fund_path, index=False)
+                        log.info(f"[{self.name}] Saved fundamentals: {len(fund_df)} stocks → {fund_path}")
+                    else:
+                        log.warning(f"[{self.name}] Fundamentals fetch returned empty")
+                except Exception as e:
+                    log.warning(f"[{self.name}] Fundamentals fetch failed: {e}")
+
         return AgentResult(
             success=len(errors) == 0 or not market_data.empty,
             records_written=total_records,
@@ -335,20 +358,39 @@ class DataAgent(BaseAgent):
                 df = fetch_cn_market_cap_yf(tickers)
             return df
         else:
-            # Use yfinance fast_info for all other markets (faster than .info)
+            # Use yfinance fast_info in parallel batches with per-call timeout
             import yfinance as yf
+            from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeout
             suffix = self.market_config.get("ticker_suffix", "")
             rows = []
-            for ticker in tickers:
+            PER_CALL_TIMEOUT = 15  # seconds — skip any ticker that doesn't respond
+            WORKERS = 5
+
+            def _fetch_one(ticker):
                 symbol = f"{ticker}{suffix}" if suffix else ticker
-                cap = None
                 try:
                     with yf_limiter:
                         fi = yf.Ticker(symbol).fast_info
                         cap = getattr(fi, "market_cap", None)
+                    return ticker, cap
                 except Exception:
-                    pass
-                rows.append({"ticker": ticker, "market_cap": cap})
+                    return ticker, None
+
+            total = len(tickers)
+            done = 0
+            with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+                futures = {pool.submit(_fetch_one, t): t for t in tickers}
+                for fut in as_completed(futures):
+                    try:
+                        ticker, cap = fut.result(timeout=PER_CALL_TIMEOUT)
+                    except (FutureTimeout, Exception):
+                        ticker = futures[fut]
+                        cap = None
+                    rows.append({"ticker": ticker, "market_cap": cap})
+                    done += 1
+                    if done % 50 == 0 or done == total:
+                        ok = sum(1 for r in rows if r["market_cap"] is not None)
+                        log.info(f"[{self.name}] Market cap: {done}/{total} ({ok} ok)")
 
             df = pd.DataFrame(rows)
             return df

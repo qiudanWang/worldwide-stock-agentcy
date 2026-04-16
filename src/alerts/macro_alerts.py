@@ -25,7 +25,7 @@ def check_macro_alerts(macro_latest, yield_curve=None):
     vix_spike_threshold = macro_rules.get("vix_spike_threshold", 25)
     vix_elevated_threshold = macro_rules.get("vix_elevated_threshold", 20)
 
-    if vix and vix.get("value"):
+    if vix and vix.get("value") is not None:
         if vix["value"] >= vix_spike_threshold:
             alerts.append({
                 "alert_type": "macro_alert",

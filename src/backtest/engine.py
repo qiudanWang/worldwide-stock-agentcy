@@ -109,8 +109,8 @@ def load_cached_result(market: str, timeframe: str, cache_key: str,
         try:
             with open(path) as f:
                 return json.load(f)
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning(f"Corrupted cache at {path}, re-running: {e}")
     return None
 
 
@@ -569,7 +569,14 @@ def run_backtest(
                     if exit_px is None or exit_px <= 0:
                         held_tickers.remove(tk)
                         continue
-                    entry_px = held_cost.get(tk, exit_px)
+                    entry_px = held_cost.get(tk)
+                    if not entry_px or entry_px <= 0:
+                        log.warning(f"No entry cost for {tk}, skipping trade record")
+                        held_tickers.remove(tk)
+                        held_cost.pop(tk, None)
+                        held_prev_px.pop(tk, None)
+                        held_dates.pop(tk, None)
+                        continue
                     pnl_pct  = exit_px / entry_px - 1 - COMMISSION
                     trades.append({
                         "ticker":      tk,
@@ -605,7 +612,13 @@ def run_backtest(
             last_date = all_dates[-1]
             for tk in held_tickers:
                 exit_px  = close_map.get(tk, {}).get(last_date)
-                entry_px = held_cost.get(tk, exit_px or 1.0)
+                entry_px = held_cost.get(tk)
+                if not exit_px or exit_px <= 0:
+                    log.debug(f"No exit price for {tk} at {last_date}, skipping close")
+                    continue
+                if not entry_px or entry_px <= 0:
+                    log.warning(f"No entry cost recorded for {tk}, skipping close")
+                    continue
                 if exit_px and exit_px > 0 and entry_px > 0:
                     pnl_pct = exit_px / entry_px - 1 - COMMISSION
                     trades.append({

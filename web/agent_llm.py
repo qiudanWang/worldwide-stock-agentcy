@@ -1,6 +1,7 @@
 """LLM-backed agent chat — each agent loads its data and uses an LLM to answer."""
 
 import os
+import re
 import json
 from datetime import datetime
 
@@ -210,6 +211,78 @@ def _latest_daily_parquet(base):
         return pd.DataFrame()
 
 
+def _load_ticker_context(ticker: str, market: str, data_dir: str) -> str:
+    """Focused context for a single ticker — used when question is about one company.
+    Much smaller than _load_market_context so the whole token budget goes to this stock.
+    """
+    base = os.path.join(data_dir, "markets", market)
+    sections = []
+    names = _name_lookup(base)
+
+    # Price/volume for this ticker only
+    snap = _latest_daily_parquet(base)
+    if not snap.empty and "ticker" in snap.columns:
+        row = snap[snap["ticker"] == ticker]
+        if not row.empty:
+            row = _merge_names(row, names)
+            cols = [c for c in ["ticker", "name", "close", "return_1d", "return_5d",
+                                "return_20d", "volume", "volume_ratio"] if c in row.columns]
+            sections.append(f"PRICE DATA ({ticker}):\n" + _df_to_text(row[cols]))
+
+    # Fundamentals from cache (if available)
+    fund_path = os.path.join(base, "fundamentals.parquet")
+    if os.path.exists(fund_path):
+        try:
+            fund = pd.read_parquet(fund_path)
+            frow = fund[fund["ticker"].astype(str) == ticker]
+            if not frow.empty:
+                frow = frow.drop(columns=["ticker", "market"], errors="ignore")
+                sections.append(f"FUNDAMENTALS ({ticker}):\n" + _df_to_text(frow))
+        except Exception:
+            pass
+
+    # Indices for context
+    idx = _load_parquet(os.path.join(base, "indices.parquet"))
+    if not idx.empty:
+        sections.append(f"MARKET INDICES:\n" + _df_to_text(idx, 5))
+
+    # News for this ticker
+    news = _load_parquet(os.path.join(base, "news.parquet"), max_rows=50)
+    if not news.empty and "ticker" in news.columns:
+        tnews = news[news["ticker"] == ticker]
+        if not tnews.empty:
+            cols = [c for c in ["title", "publisher", "hit_count"] if c in tnews.columns]
+            sections.append(f"NEWS ({ticker}):\n" + _df_to_text(tnews[cols], 8))
+
+    # Sector peers — find same-sector companies from universe and show their recent returns
+    uni_path = os.path.join(base, "universe.parquet")
+    if os.path.exists(uni_path):
+        try:
+            uni = pd.read_parquet(uni_path)
+            row_uni = uni[uni["ticker"].astype(str) == ticker]
+            if not row_uni.empty and "sector" in uni.columns:
+                sector = row_uni.iloc[0]["sector"]
+                peers = uni[(uni["sector"] == sector) & (uni["ticker"].astype(str) != ticker)]
+                if not peers.empty and not snap.empty and "ticker" in snap.columns:
+                    peer_tickers = peers["ticker"].astype(str).tolist()
+                    peer_snap = snap[snap["ticker"].astype(str).isin(peer_tickers)].copy()
+                    if not peer_snap.empty:
+                        peer_snap = _merge_names(peer_snap, names)
+                        cols = [c for c in ["ticker", "name", "close", "return_1d",
+                                            "return_20d", "market_cap"] if c in peer_snap.columns]
+                        # Sort by market_cap desc, show top 10
+                        if "market_cap" in peer_snap.columns:
+                            peer_snap = peer_snap.sort_values("market_cap", ascending=False)
+                        sections.append(
+                            f"SECTOR PEERS ({sector}, top {min(10, len(peer_snap))}):\n"
+                            + _df_to_text(peer_snap[cols], 10)
+                        )
+        except Exception:
+            pass
+
+    return "\n\n".join(sections) if sections else _load_data_context(market, data_dir)
+
+
 def _load_market_context(market, data_dir):
     """Load unified context combining data+news+signal for a market agent."""
     base = os.path.join(data_dir, "markets", market)
@@ -222,7 +295,7 @@ def _load_market_context(market, data_dir):
     if not snap.empty:
         snap = _latest_per_ticker(snap)
         snap = _merge_names(snap, names)
-        cols = [c for c in ["ticker", "name", "close", "return_1d", "return_5d",
+        cols = [c for c in ["ticker", "name", "close", "return_1d", "return_5d", "return_20d",
                             "volume", "volume_ratio", "turnover"] if c in snap.columns]
         if "return_1d" in snap.columns:
             snap = snap.sort_values("return_1d", ascending=False)
@@ -283,194 +356,716 @@ def _load_market_context(market, data_dir):
 
 
 def _load_global_context(data_dir):
-    """Load all data relevant to the Global Strategist."""
+    """Load all data relevant to the Global Strategist.
+
+    Ordering is intentional: highest-signal sections first so they survive the
+    character-cap truncation. Bulky low-density sections (alerts, peers, geo) go last.
+    """
     gdir = os.path.join(data_dir, "global")
     sections = []
 
-    # Macro
+    # ── 1. Capital flows (always first — most commonly queried, small footprint) ──
+    import glob as _glob
+    flow_summaries = []
+    for flow_path in sorted(_glob.glob(os.path.join(data_dir, "markets", "*", "capital_flow.parquet"))):
+        try:
+            df = pd.read_parquet(flow_path)
+            if df.empty:
+                continue
+            market_code = flow_path.split(os.sep)[-2]
+            flow_col = "net_flow" if "net_flow" in df.columns else "net_flow_proxy"
+            if flow_col not in df.columns:
+                continue
+            if "date" in df.columns:
+                df = df.sort_values("date")
+                # Drop weekend rows — ETF proxies on Sat/Sun are non-trading noise
+                df = df[pd.to_datetime(df["date"]).dt.dayofweek < 5]
+            recent = df.tail(10)
+            values = recent[flow_col].dropna()
+            if values.empty:
+                continue
+            last_date = str(recent["date"].iloc[-1])[:10] if "date" in recent.columns else "n/a"
+            last_val  = round(float(values.iloc[-1]), 2)
+            avg_5d    = round(float(values.tail(5).mean()), 2)
+            total_10d = round(float(values.sum()), 2)
+            direction = "INFLOW ▲" if avg_5d > 0 else "OUTFLOW ▼"
+            unit = "亿CNY northbound" if market_code == "CN" else "USD ETF-proxy"
+            # Warn if data is stale (>30 days old)
+            try:
+                days_old = (pd.Timestamp.today() - pd.Timestamp(last_date)).days
+                stale_note = f"  ⚠ DATA STALE ({days_old}d old — CN exchanges discontinued northbound flow reporting after Aug 2024)" if days_old > 30 else ""
+            except Exception:
+                stale_note = ""
+            flow_summaries.append(
+                f"  {market_code}: {direction}  last={last_val} {unit}  "
+                f"5d-avg={avg_5d}  10d-total={total_10d}  (as of {last_date}){stale_note}"
+            )
+        except Exception:
+            pass
+    if flow_summaries:
+        note = ("+ = inflow (foreign money entering), - = outflow (foreign money leaving). "
+                "CN = Stock Connect northbound. Others = country ETF proxy. "
+                "IMPORTANT: Always state the 'as of' date when citing these numbers — "
+                "the user's UI may show a different trading day.")
+        sections.append(
+            "CAPITAL FLOWS BY MARKET:\n" + note + "\n" + "\n".join(flow_summaries)
+        )
+
+    # ── 2. Macro snapshot (compact: top 15 indicators only) ──
     macro = _load_json(os.path.join(gdir, "macro_latest.json"))
     if macro:
-        sections.append("MACRO INDICATORS:\n" + json.dumps(macro, indent=1, default=str))
+        top = dict(list(macro.items())[:15])
+        sections.append("MACRO INDICATORS (top 15):\n" + json.dumps(top, indent=1, default=str))
 
-    # Sector performance
+    # ── 3. Sector performance (compact) ──
     sec = _load_parquet(os.path.join(gdir, "sector_performance.parquet"))
     if not sec.empty:
-        sections.append(f"SECTOR PERFORMANCE ({len(sec)} entries):\n" + _df_to_text(sec, 40))
+        sections.append(f"SECTOR PERFORMANCE:\n" + _df_to_text(sec, 20))
 
-    # Correlations
+    # ── 4. Correlations ──
     corr = _load_json(os.path.join(gdir, "correlations.json"))
     if corr:
-        sections.append("CORRELATIONS:\n" + json.dumps(corr, indent=1, default=str)[:2000])
+        sections.append("CORRELATIONS:\n" + json.dumps(corr, indent=1, default=str)[:1000])
 
-    # Global alerts
-    alerts = _load_json(os.path.join(gdir, "alerts.json"))
-    if alerts and isinstance(alerts, list):
-        sections.append(f"GLOBAL ALERTS ({len(alerts)}):\n" + json.dumps(alerts[:20], indent=1, default=str))
-
-    # Peer groups
-    peers = _load_json(os.path.join(gdir, "peer_groups.json"))
-    if peers and isinstance(peers, list):
-        sections.append(f"PEER GROUPS ({len(peers)} groups):\n" + json.dumps(peers[:10], indent=1, default=str)[:2000])
-
-    # Geopolitical
+    # ── 5. Geopolitical news (most recent 8 items) ──
     geo = _load_json(os.path.join(gdir, "geopolitical_context.json"))
     if geo:
         items = geo if isinstance(geo, list) else geo.get("items", [])
         if items:
-            sections.append(f"GEOPOLITICAL NEWS ({len(items)} items):\n" + json.dumps(items[:15], indent=1, default=str)[:2000])
+            sections.append(f"GEOPOLITICAL NEWS:\n" + json.dumps(items[:8], indent=1, default=str)[:1500])
+
+    # ── 6. Alerts (small sample) — lowest priority, most verbose ──
+    alerts = _load_json(os.path.join(gdir, "alerts.json"))
+    if alerts and isinstance(alerts, list):
+        sections.append(f"GLOBAL ALERTS (sample):\n" + json.dumps(alerts[:10], indent=1, default=str)[:1000])
 
     return "\n\n".join(sections) if sections else "No global data yet. Run the pipeline first."
 
 
 # ── Tool registry ────────────────────────────────────────────────────
 
-TOOLS = {
-    "local_data":         "Local OHLCV prices, returns (1d/5d/20d), volume ratios, market cap, indices from most recent pipeline run",
-    "local_news":         "Local scraped news articles with keyword relevance scores",
-    "local_signals":      "Local alerts: volume spikes, capital flow anomalies, unusual activity signals",
-    "openbb_gainers":     "Live top gaining stocks today — US STOCKS ONLY, do NOT use for CN/HK/JP/KR/TW/IN/UK/DE/FR/AU/BR/SA markets",
-    "openbb_losers":      "Live top losing stocks today — US STOCKS ONLY, do NOT use for non-US markets",
-    "openbb_active":      "Live most actively traded stocks — US STOCKS ONLY, do NOT use for non-US markets",
-    "openbb_indices":     "Live major global indices (S&P 500, Nasdaq, Nikkei, FTSE, Hang Seng, etc.)",
-    "openbb_quote":       "Live real-time price quote for specific tickers [needs tickers]",
-    "openbb_news":        "Latest news articles for a specific company [needs ticker]",
-    "openbb_history":     "30-day price history for a specific stock [needs ticker]",
-    "openbb_profile":     "Company profile: sector, industry, description, key stats [needs ticker]",
-    "openbb_fundamentals":"Financial ratios: P/E, EPS, revenue, profit margins [needs ticker]",
-    "trading_agent":      "Deep multi-agent analysis: fundamentals + sentiment + technicals + bull/bear debate (slow, 30-60s). Supports US stocks (e.g. NVDA) AND CN A-shares (6-digit codes e.g. 688031). Use ONLY for explicit 'analyze TICKER' requests [needs ticker]",
-    "sector_agent":       "Multi-agent sector analysis: performance overview, sentiment, bull/bear debate, outlook for a whole sector (e.g. 'tech sector', '半导体', 'finance'). Use when user asks to analyze a sector, industry, or market segment [needs sector name]",
-    "web_search":         "Search the internet for real-time news, recent events, or any information not available in local/OpenBB data. Use when other tools lack the needed information.",
+TOOL_REGISTRY = {
+    "local_data": {
+        "description": "Local OHLCV prices, returns (1d/5d/20d), volume ratios, market cap, sector/industry classification from most recent pipeline run",
+        "when_to_use": "Always include as a step when the question involves stocks in our local universe — even when web_search covers revenue/profit. Provides price performance and sector context that complements web financial data. Use for: market overview, ranking by return/volume, single-stock price history, or as a complement alongside web_search.",
+        "input": {"ticker": "optional — omit for market-wide data, provide for single stock"},
+        "output": "Price, returns, volume ratio, market cap table; sector/industry info; or single-stock OHLCV",
+        "constraints": "Data is from last pipeline run — not real-time. No PE/EPS — use web_search or openbb_fundamentals for those.",
+    },
+    "local_news": {
+        "description": "Local scraped news articles with keyword relevance scores",
+        "when_to_use": "User asks about news, headlines, or recent articles for a stock or market",
+        "input": {"ticker": "optional"},
+        "output": "News titles, publisher, hit count, keywords matched",
+        "constraints": "Only covers news scraped in the last pipeline run. Not real-time.",
+    },
+    "local_peers": {
+        "description": "Find peer companies in the same industry/sub-sector from local universe — includes price performance (1d/20d returns), volume ratio, and latest annual + quarterly revenue/net profit (亿元, YoY%) from local financials cache",
+        "when_to_use": "User asks about peers, competitors, or similar companies for a stock. Always include for peer_comparison — provides peer list with price AND financials from local data. Add web_search only when forward estimates or analyst targets are also needed.",
+        "input": {"ticker": "required"},
+        "output": "Peer list with ticker, name, sector, industry, close price, 1d/20d returns, vol_ratio, latest annual revenue/NP (YoY%), latest quarterly revenue/NP (YoY%)",
+        "constraints": "Only covers stocks in local universe. Financials data available after quarterly pipeline refresh — may be stale for very recent reports.",
+    },
+    "local_signals": {
+        "description": "Local alerts: volume spikes, capital flow anomalies, unusual activity signals",
+        "when_to_use": "User asks about unusual activity, alerts, or anomalies",
+        "input": {},
+        "output": "Alert list with ticker, signal type, magnitude",
+        "constraints": "CN market only. Based on last pipeline run.",
+    },
+    "openbb_gainers": {
+        "description": "Live top gaining stocks today",
+        "when_to_use": "User asks for top gainers or best performing stocks today",
+        "input": {},
+        "output": "List of top gaining tickers with % change",
+        "constraints": "US STOCKS ONLY. Never use for CN/HK/JP/KR/TW/IN/UK/DE/FR/AU/BR/SA markets.",
+    },
+    "openbb_losers": {
+        "description": "Live top losing stocks today",
+        "when_to_use": "User asks for top losers or worst performing stocks today",
+        "input": {},
+        "output": "List of top losing tickers with % change",
+        "constraints": "US STOCKS ONLY. Never use for non-US markets.",
+    },
+    "openbb_active": {
+        "description": "Live most actively traded stocks by volume today",
+        "when_to_use": "User asks for most active or highest volume stocks today",
+        "input": {},
+        "output": "List of most active tickers with volume",
+        "constraints": "US STOCKS ONLY. Never use for non-US markets.",
+    },
+    "openbb_indices": {
+        "description": "Live major global indices: S&P 500, Nasdaq, Nikkei, FTSE, Hang Seng, CSI 300, etc.",
+        "when_to_use": "User asks about market indices, global markets, or macro overview. Use for any market.",
+        "input": {},
+        "output": "Index name, current level, % change today",
+        "constraints": "Index-level only — no individual stock data.",
+    },
+    "openbb_quote": {
+        "description": "Live price quote for a specific stock — works for CN (A-share), HK, US, JP and other markets via yfinance",
+        "when_to_use": "User asks for current price, today's change, or live quote of a specific stock. Use for CN A-share tickers too — provide ticker with exchange suffix.",
+        "input": {"ticker": "required — exchange-suffixed: 603881.SS (Shanghai 6xxxxx), 300442.SZ (Shenzhen 0/3xxxxx), 0700.HK, AAPL"},
+        "output": "Current price, % change today, volume, market cap",
+        "constraints": "One ticker per call. CN coverage via yfinance — may have slight delay.",
+    },
+    "openbb_news": {
+        "description": "Latest news articles for a specific company via financial data APIs",
+        "when_to_use": "User asks for recent news about a specific named company or ticker",
+        "input": {"ticker": "required"},
+        "output": "News headline, source, date, summary",
+        "constraints": "Requires a ticker. Coverage varies by market — US coverage best.",
+    },
+    "openbb_history": {
+        "description": "30-day price history for a specific stock",
+        "when_to_use": "User asks about price trend, chart, or historical performance over weeks",
+        "input": {"ticker": "required — exchange-suffixed for non-US"},
+        "output": "Daily OHLCV for last 30 days",
+        "constraints": "Requires a ticker. 30-day window only.",
+    },
+    "openbb_profile": {
+        "description": "Company profile: sector, industry, business description, key stats",
+        "when_to_use": "User asks what a company does, its sector/industry, or wants a company overview",
+        "input": {"ticker": "required"},
+        "output": "Sector, industry, description, employee count, HQ location",
+        "constraints": "Requires a ticker. Coverage varies — US best.",
+    },
+    "openbb_fundamentals": {
+        "description": "Financial ratios and TTM financials: P/E, EPS, revenue, profit margins, ROE, debt/equity",
+        "when_to_use": "User asks about fundamentals, valuation, earnings, revenue, or financial health of a specific company. Use for peer comparison when ticker is known.",
+        "input": {"ticker": "required — exchange-suffixed: 600519.SS (Shanghai), 000001.SZ (Shenzhen), 0700.HK, AAPL"},
+        "output": "Revenue TTM, net income, P/E trailing/forward, EPS, profit margin, gross margin, ROE, debt/equity, free cash flow",
+        "constraints": "Requires a ticker. For CN stocks use .SS (6xxxxx) or .SZ (0xxxxx/3xxxxx) suffix. Coverage: US best, CN/HK partial via yfinance.",
+    },
+    "peer_agent": {
+        "description": "Fixed-format peer comparison report: ranks peers by 20d momentum, flags volume activity, summarizes financials (revenue/NP annual + quarterly, YoY%), gives relative strength verdict for the anchor stock vs its industry peers",
+        "when_to_use": "User asks to compare a stock with peers, competitors, or similar companies. Always use for a full analysis report — peer_agent calls local_peers internally and adds LLM ranking, financials summary, and verdict.",
+        "input": {"ticker": "required — the anchor stock to compare against its peers"},
+        "output": "Peer table with price + financials, relative strength ranking (strongest→weakest), volume activity, financials comparison (revenue/NP with YoY%), verdict (Leader/Middle/Laggard)",
+        "constraints": "Only covers stocks in local universe. Financials shown when available from quarterly pipeline refresh.",
+    },
+    "trading_agent": {
+        "description": "Deep multi-agent analysis: fundamentals + sentiment + technicals + bull/bear debate",
+        "when_to_use": "User explicitly asks to analyze, deep-dive, or get a full report on a specific stock. Slow (30-60s).",
+        "input": {"ticker": "required — US ticker (e.g. NVDA) or CN 6-digit code (e.g. 688031)"},
+        "output": "Full analysis: price, fundamentals, sentiment, technical signals, bull/bear arguments, outlook",
+        "constraints": "One stock only. Slow. Do not use for peer comparison or market overview.",
+    },
+    "sector_agent": {
+        "description": "Multi-agent sector analysis: performance, sentiment, bull/bear debate for a whole sector",
+        "when_to_use": "User asks to analyze a sector, industry, or market segment (e.g. semiconductors, tech sector, healthcare)",
+        "input": {"ticker": "sector name as ticker field, e.g. 'semiconductors' or 'technology'"},
+        "output": "Sector performance, top stocks, sentiment, outlook",
+        "constraints": "Sector-level only — not for individual stocks.",
+    },
+    "web_search": {
+        "description": "Search the internet for real-time news, recent financials, analyst estimates, or any information not in local/OpenBB data",
+        "when_to_use": "Use when: (1) data needed is more recent than last pipeline run, (2) user asks about 2025/2026 revenue/profit results or analyst estimates, (3) local/OpenBB tools lack coverage. Do NOT use for peer discovery — use local_peers instead.",
+        "input": {"query": "search query string"},
+        "output": "Web snippets: title, body text, URL for each result",
+        "constraints": "Results quality varies. CN queries: use 'cn-zh' region. Non-CN: use 'wt-wt'.",
+    },
+    "fetch_url": {
+        "description": "Fetch and read the full text content of a specific URL (news article, announcement, financial report)",
+        "when_to_use": "User pastes a URL in their message — always fetch it as the first step",
+        "input": {"url": "the URL from the user's message"},
+        "output": "Full article text, cleaned of HTML",
+        "constraints": "One URL per call. Some sites block crawlers.",
+    },
 }
 
-_ROUTER_IGNORE = {
-    "I", "A", "AN", "THE", "FOR", "IN", "ON", "AT", "TO", "OF", "IS",
-    "AND", "OR", "BY", "AS", "IT", "BE", "DO", "IF", "NO", "UP", "SO",
-    "MY", "ME", "US", "UK", "CN", "JP", "HK", "DE", "FR", "KR", "TW",
-    "AU", "BR", "SA", "EU", "LLM", "API", "ETF", "IPO", "AI", "ML",
-    "USD", "EUR", "GBP", "JPY", "CNY", "HKD", "KRW", "TWD", "SGD",
-    "PE", "EPS", "CEO", "CFO", "CTO", "IPO", "YOY", "QOQ", "WTI",
-}
+# Backward compat — existing code references TOOLS for name validation
+TOOLS = {k: v["description"] for k, v in TOOL_REGISTRY.items()}
 
 
-def _route_message(message, market, agent_type, provider, api_key):
-    """Fast LLM router: returns {"tools": [...], "tickers": [...]}."""
-    import re as _re
+def _registry_for_llm() -> str:
+    """Format TOOL_REGISTRY as a compact string for LLM prompts."""
+    lines = []
+    for name, spec in TOOL_REGISTRY.items():
+        inp = ", ".join(f"{k}: {v}" for k, v in spec["input"].items()) or "none"
+        lines.append(
+            f"[{name}]\n"
+            f"  desc: {spec['description']}\n"
+            f"  use when: {spec['when_to_use']}\n"
+            f"  input: {inp}\n"
+            f"  output: {spec['output']}\n"
+            f"  constraints: {spec['constraints']}"
+        )
+    return "\n\n".join(lines)
 
-    tools_list = "\n".join(f"- {k}: {v}" for k, v in TOOLS.items())
-    router_system = "You are a routing agent. Output ONLY valid JSON, no explanation, no markdown."
-    router_user = f"""Market: {market or "global"}  Agent: {agent_type}
+
+
+# ── Two-phase planner ─────────────────────────────────────────────────
+
+def _call_llm(system, history, message, max_tokens=None):
+    """Unified LLM call. Reads provider/api_key from config — no need to pass them around."""
+    provider, api_key = get_llm_provider()
+    if provider == "anthropic":
+        return _call_anthropic(api_key, system, history, message, max_tokens or 8096)
+    return _call_openai(api_key, system, history, message, max_tokens)
+
+
+def _plan_message(message: str, market, agent_type: str,
+                  chat_history: list = None) -> dict:
+    """Phase 1: LLM understands the question and produces a structured execution plan.
+
+    Returns dict:
+      intent: single_stock | peer_comparison | sector_analysis | market_overview | macro | news | general
+      tickers: list of explicit ticker codes from the question
+      company_name: str
+      steps: list[{id, tool, ticker?, url?, query?, query_template?, depends_on?, purpose}]
+      response_focus: precise instruction for the final synthesis LLM call
+    """
+    tools_list = _registry_for_llm()
+
+    # Include last 2 turns so planner can resolve references like "it", "its peers", "that company"
+    history_msgs = []
+    if chat_history:
+        for msg in chat_history[-2:]:
+            role = "assistant" if msg.get("role") == "agent" else "user"
+            history_msgs.append({"role": role, "content": msg["content"][:400]})
+
+    planner_system = (
+        "You are a financial research planner. "
+        "Output ONLY valid JSON — no markdown fences, no explanation. "
+        "Use the conversation history to resolve references like 'it', 'its peers', or 'that company'."
+    )
+    planner_user = f"""Market: {market or "global"}  Agent: {agent_type}
 Question: {message}
 
-Tools:
+Available tools:
 {tools_list}
 
-Return: {{"tools": ["tool1", "tool2"], "tickers": ["TICKER"], "company_name": ""}}
-
-- tickers: ONLY ticker codes that the user explicitly typed (e.g. "NVDA", "688031", "9988"). Do NOT infer or convert company names to tickers — if user typed "阿里巴巴" or "Tesla", do NOT put "BABA" or "TSLA" in tickers.
-- company_name: if user mentions a company by name rather than by ticker code (e.g. "阿里巴巴", "Tesla", "腾讯"), put the name here and leave tickers empty.
+Output a JSON execution plan:
+{{
+  "intent": "<single_stock | peer_comparison | sector_analysis | market_overview | macro | news | general>",
+  "tickers": ["<ticker codes the user explicitly typed>"],
+  "company_name": "<company name if user mentioned one, else empty>",
+  "steps": [
+    {{
+      "id": 1,
+      "tool": "<tool name>",
+      "ticker": "<for openbb/local tools>",
+      "url": "<for fetch_url>",
+      "query": "<for web_search — fixed query>",
+      "query_template": "<for web_search steps that depend on a prior step — write query with {{peer_companies}} where the prior step's discovered company names will be inserted>",
+      "depends_on": [],
+      "purpose": "<one sentence>"
+    }}
+  ],
+  "response_focus": "<what the synthesizer should focus on — specific metric, comparison, conclusion>"
+}}
 
 Rules:
-- Pick 1-4 tools. local tools are fast (cached), OpenBB tools fetch live data.
-- Extract stock tickers: 1-5 uppercase letters for US (e.g. NVDA, AAPL) OR 6-digit numbers for CN A-shares (e.g. 688031, 000001) OR 4-5 digits for HK (e.g. 9988, 0700).
-- Use trading_agent if user asks to analyze a specific stock or company, whether by ticker (e.g. "analyze NVDA", "分析9988") or by company name (e.g. "帮我分析一下阿里巴巴", "analyze Tesla", "分析腾讯"). Works for all markets.
-- Use sector_agent if user mentions a sector/industry/subsector (e.g. "analyze tech sector", "分析半导体板块", "semiconductor industry outlook", "software application companies", "医疗器械板块"). Extract the sector or subsector name as a ticker.
-- CRITICAL: openbb_gainers/losers/active return US stocks ONLY. NEVER use for CN/HK/JP/KR/TW/IN/UK/DE/FR/AU/BR/SA markets.
-- Non-US market movers (gainers/losers/active) → local_data + openbb_indices (has return_1d for ranking, plus live index).
-- US market movers → local_data + openbb_gainers + openbb_losers + openbb_indices.
-- Global overview → local_data + openbb_indices.
-- News → local_news + openbb_news if ticker present.
-- Specific stock → openbb_quote + local_data.
-- Indices/macro → openbb_indices.
-- If user mentions "internet", "search", "browse", "web", "online", "latest news", ALWAYS include web_search.
-- For "top gainers news" / "news about movers" with no tickers → use local_data + web_search (web_search will auto-find the tickers).
-- FALLBACK: If the question is about current events, general finance topics, economic data, company news, or ANY topic where local pipeline data would be insufficient or out-of-date, ALWAYS add web_search.
-- If needed data is unavailable in local/OpenBB tools, add web_search to find it online.
-- When in doubt about whether local data covers the question, include web_search as a safety net."""
+- Tool "use when" and "constraints" fields are the single source of truth — read them carefully to choose tools.
+- Only include fields relevant to the tool (e.g. skip url/query/ticker if not needed).
+- tickers: ONLY codes the user explicitly typed. Never infer from company names.
+- URL in message: fetch_url is always step 1. Other steps follow after.
+- Peer comparison (user asks about competitors, similar companies, industry peers): ALWAYS include peer_agent as a step — even if fetch_url or web_search are also present. peer_agent produces a full ranked report from local data; web_search adds revenue/profit/financials on top.
+- Always include a tool even if coverage is partial — partial data is better than nothing.
+- Max 4 steps."""
 
     try:
-        if provider == "anthropic":
-            raw = _call_anthropic(api_key, router_system, [], router_user, max_tokens=150)
-        else:
-            raw = _call_openai(api_key, router_system, [], router_user, max_tokens=150)
-        match = _re.search(r'\{.*?\}', raw, _re.DOTALL)
+        raw = _call_llm(planner_system, history_msgs, planner_user)
+
+        import re as _re
+        match = _re.search(r'\{.*\}', raw, _re.DOTALL)
         if match:
             parsed = json.loads(match.group())
-            tools = [t for t in parsed.get("tools", []) if t in TOOLS]
-            tickers = [t for t in parsed.get("tickers", []) if isinstance(t, str)]
-            company_name = parsed.get("company_name", "").strip()
-            if tools:
-                return {"tools": tools, "tickers": tickers[:4], "company_name": company_name}
+            steps = [s for s in parsed.get("steps", []) if isinstance(s, dict) and s.get("tool") in TOOLS]
+            if steps or parsed.get("intent"):
+                parsed["steps"] = steps
+                print(
+                    f"[planner] intent={parsed.get('intent')} "
+                    f"steps={[s['tool'] for s in steps]} "
+                    f"focus={parsed.get('response_focus', '')[:80]}",
+                    flush=True,
+                )
+                return parsed
+    except Exception as e:
+        print(f"[planner] failed: {e}", flush=True)
+
+    return {}
+
+
+def _extract_peer_names_llm(text: str) -> list[str]:
+    """Use LLM to extract company names from a step output for use in chained queries."""
+    prompt = (
+        "Extract all company names from the text below. "
+        "Return only the names, one per line, no explanations, no numbering. "
+        "Include both English and Chinese names as they appear.\n\n"
+        f"{text[:2000]}"
+    )
+    try:
+        raw = _call_llm("You extract company names from text.", [], prompt)
+        names = [n.strip() for n in raw.strip().splitlines() if n.strip()]
+        return names[:8]
+    except Exception:
+        return []
+
+
+def _execute_plan(plan: dict, tickers: list, market, agent_type: str,
+                  data_dir: str, message: str) -> dict:
+    """Phase 2: Execute plan steps. Independent steps (no depends_on) run in parallel;
+    dependent steps run sequentially after their deps complete.
+
+    Handles all tools including trading_agent and sector_agent.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import re as _re
+
+    tool_results: dict = {}
+    step_outputs: dict = {}          # step_id → raw result text
+    is_global = agent_type == "global" or market in (None, "ALL")
+
+    def _resolve_query(step, dep_ids):
+        query = step.get("query") or ""
+        tmpl  = step.get("query_template") or ""
+        if tmpl:
+            placeholder = "{peer_companies}" if "{peer_companies}" in tmpl else "{peer_names}" if "{peer_names}" in tmpl else ""
+            if dep_ids and placeholder:
+                dep_text = " ".join(step_outputs.get(d, "") for d in dep_ids)
+                names = _extract_peer_names_llm(dep_text)
+                sub = " ".join(names) if names else message[:60]
+                return tmpl.replace(placeholder, sub)
+            return tmpl
+        return query
+
+    def _run_step(step):
+        step_id = step.get("id", 0)
+        tool    = step.get("tool", "")
+        dep_ids = step.get("depends_on") or []
+        query   = _resolve_query(step, dep_ids)
+        result  = ""
+
+        if tool == "fetch_url":
+            url = step.get("url") or ""
+            if not url:
+                urls = _re.findall(r'https?://\S+', message)
+                url = urls[0].rstrip(".,)") if urls else ""
+            result = _fetch_url(url) if url else "(no URL found in message)"
+
+        elif tool == "local_data":
+            ticker = step.get("ticker") or (tickers[0] if tickers else None)
+            if is_global:
+                result = _load_global_context(data_dir)
+            elif ticker:
+                result = _load_ticker_context(ticker, market, data_dir)
+            else:
+                result = _load_data_context(market, data_dir)
+
+        elif tool == "web_search":
+            intent  = plan.get("intent", "")
+            company = plan.get("company_name", "")
+            is_cn   = market == "CN" or any(_re.match(r'^\d{6}$', t) for t in tickers)
+            search_region = "cn-zh" if is_cn else "wt-wt"
+            if not query:
+                if intent == "peer_comparison" and company:
+                    query = f"{company} A-share competitors China server computing AI 算力 2025" if not dep_ids \
+                            else f"{company} 竞争对手 浪潮信息 算力 A股 2025 2026 营收"
+                elif tickers:
+                    query = f"{tickers[0]} {company} 2025 2026 revenue 营收 净利润 annual results"
+                else:
+                    query = _build_macro_search_query(message, market)
+            res = _web_search(query, max_results=5, region=search_region)
+            result = res
+
+        elif tool == "trading_agent":
+            ticker = step.get("ticker") or (tickers[0] if tickers else None)
+            if ticker:
+                try:
+                    from web.local_trading_agent import detect_market, local_trading_analyze
+                except ImportError:
+                    from local_trading_agent import detect_market, local_trading_analyze
+                result = trading_agents_analyze(ticker) if detect_market(ticker) == "US" \
+                         else local_trading_analyze(ticker, data_dir)
+
+        elif tool == "peer_agent":
+            ticker = step.get("ticker") or (tickers[0] if tickers else None)
+            if ticker:
+                try:
+                    from web.local_trading_agent import local_peers_analyze, detect_market
+                except ImportError:
+                    from local_trading_agent import local_peers_analyze, detect_market
+                peer_market = market or detect_market(ticker)
+                result = local_peers_analyze(ticker, peer_market, data_dir) if peer_market else "(peer_agent: could not detect market)"
+            else:
+                result = "(peer_agent: no ticker)"
+
+        elif tool == "sector_agent":
+            sector_query = step.get("ticker") or (tickers[0] if tickers else "")
+            if sector_query:
+                try:
+                    from web.local_trading_agent import local_sector_analyze
+                except ImportError:
+                    from local_trading_agent import local_sector_analyze
+                result = local_sector_analyze(sector_query, market, data_dir)
+
+        elif tool == "local_news":
+            ticker = step.get("ticker") or (tickers[0] if tickers else None)
+            if ticker and market:
+                try:
+                    try:
+                        from web.local_trading_agent import _load_local_news
+                    except ImportError:
+                        from local_trading_agent import _load_local_news
+                    rows = _load_local_news(ticker, market, data_dir)
+                    result = "\n".join(
+                        f"- {r.get('title','')} [{r.get('publisher','')}] hits={r.get('hit_count','')}"
+                        for r in rows
+                    ) if rows else "(no local news found)"
+                except Exception as e:
+                    result = f"(local_news error: {e})"
+            else:
+                result = "(local_news: ticker or market missing)"
+
+        elif tool == "local_signals":
+            ticker = step.get("ticker") or (tickers[0] if tickers else None)
+            if ticker and market:
+                try:
+                    try:
+                        from web.local_trading_agent import _load_local_alerts
+                    except ImportError:
+                        from local_trading_agent import _load_local_alerts
+                    alerts = _load_local_alerts(ticker, market, data_dir)
+                    result = "\n".join(str(a) for a in alerts) if alerts else "(no signals found)"
+                except Exception as e:
+                    result = f"(local_signals error: {e})"
+            else:
+                result = "(local_signals: ticker or market missing)"
+
+        elif tool == "local_peers":
+            ticker = step.get("ticker") or (tickers[0] if tickers else None)
+            if ticker:
+                try:
+                    try:
+                        from web.local_trading_agent import _load_local_peers, detect_market
+                    except ImportError:
+                        from local_trading_agent import _load_local_peers, detect_market
+                    peer_market = market or detect_market(ticker)
+                    result = _load_local_peers(ticker, peer_market, data_dir) if peer_market else "(local_peers: could not detect market)"
+                except Exception as e:
+                    result = f"(local_peers error: {e})"
+            else:
+                result = "(local_peers: no ticker)"
+
+        else:
+            # OpenBB tools
+            ticker_list = [step["ticker"]] if step.get("ticker") else tickers
+            sub = _run_openbb_tools([tool], ticker_list, market, data_dir, message=query or message)
+            result = sub.get(tool, "")
+
+        return step_id, tool, result
+
+    def _merge(tool, result):
+        """Merge a step result into tool_results (web_search accumulates; others overwrite)."""
+        if not result:
+            return
+        if tool == "web_search":
+            existing = tool_results.get("web_search", "")
+            tool_results["web_search"] = (existing + "\n\n" + result) if existing else result
+        else:
+            tool_results[tool] = result
+
+    steps = plan.get("steps", [])
+    independent = [s for s in steps if not s.get("depends_on")]
+    dependent   = [s for s in steps if s.get("depends_on")]
+
+    # Run independent steps in parallel
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = {pool.submit(_run_step, s): s for s in independent}
+        for fut in as_completed(futures):
+            step_id, tool, result = fut.result()
+            step_outputs[step_id] = result
+            _merge(tool, result)
+
+    # Run dependent steps sequentially (query chaining requires prior step_outputs)
+    for step in dependent:
+        step_id, tool, result = _run_step(step)
+        step_outputs[step_id] = result
+        _merge(tool, result)
+
+    return tool_results
+
+
+def _cn_peer_financials(peer_tickers: list, anchor_ticker: str, data_dir: str) -> str:
+    """Fetch revenue/profit for CN A-share peers using akshare + local universe names.
+
+    Uses stock_financial_abstract_ths (same source as trading_agent) to get
+    annual revenue and net profit — bypasses unreliable web search for structured data.
+    """
+    import akshare as ak
+    import re as _re
+
+    # Build ticker → name map from universe
+    names = {}
+    try:
+        import pandas as _pd
+        uni = _pd.read_parquet(f"{data_dir}/markets/CN/universe.parquet")
+        for _, row in uni.iterrows():
+            names[str(row["ticker"])] = row.get("name", row["ticker"])
     except Exception:
         pass
 
-    # Fallback: rule-based routing
-    msg_lower = message.lower()
-    # Extract US tickers (1-5 uppercase letters) and CN tickers (6-digit codes)
-    us_tickers = [t for t in _re.findall(r'\b([A-Z]{1,5})\b', message)
-                  if t not in _ROUTER_IGNORE]
-    cn_tickers = _re.findall(r'\b(\d{6})\b', message)
-    tickers = (cn_tickers + us_tickers)[:4]
+    all_tickers = list(dict.fromkeys([anchor_ticker] + peer_tickers))[:8]
+    rows = []
 
-    # Sector analysis detection
-    _SECTOR_KEYWORDS = ["sector", "industry", "板块", "行业", "赛道"]
-    is_sector_request = (
-        any(k in msg_lower for k in _SECTOR_KEYWORDS)
-    ) and ("analyze" in msg_lower or "分析" in message or "outlook" in msg_lower or
-           "how is" in msg_lower or "怎么样" in message)
+    for ticker in all_tickers:
+        name = names.get(ticker, ticker)
+        try:
+            fin = ak.stock_financial_abstract_ths(symbol=ticker, indicator="按年度")
+            if fin.empty:
+                rows.append(f"{name} ({ticker}): ⚠️ no data")
+                continue
+            # Columns vary — look for revenue and net profit
+            col_map = {c: c for c in fin.columns}
+            rev_col    = next((c for c in fin.columns if "营业总收入" in c or "营收" in c), None)
+            rev_yoy    = next((c for c in fin.columns if "营业总收入同比" in c), None)
+            profit_col = next((c for c in fin.columns if c == "净利润"), None)
+            profit_yoy = next((c for c in fin.columns if "净利润同比" in c), None)
+            period_col = next((c for c in fin.columns if "报告期" in c), None)
 
-    if is_sector_request:
-        # Extract sector name by stripping trigger words from the message
-        import re as _re3
-        # Remove intent words, keep the sector name
-        clean = message
-        for w in ["分析", "analyze", "analysis", "outlook", "how is", "怎么样", "tell me about"]:
-            clean = clean.replace(w, " ")
-        for w in _SECTOR_KEYWORDS:
-            clean = clean.replace(w, " ")
-        sector = clean.strip().strip("?？ \t\n") or "tech"
-        return {"tools": ["sector_agent"], "tickers": [sector]}
+            # tail(3) → most recent 3 years (data sorted oldest-first)
+            recent = fin.tail(3)
+            lines = [f"\n**{name} ({ticker})**"]
+            for _, r in recent.iterrows():
+                period = str(r[period_col]) if period_col else "?"
+                rev    = r[rev_col]    if rev_col    else "⚠️"
+                ry     = r[rev_yoy]    if rev_yoy    else ""
+                profit = r[profit_col] if profit_col else "⚠️"
+                py     = r[profit_yoy] if profit_yoy else ""
+                lines.append(f"  {period}年: 营收={rev} ({ry})  净利润={profit} ({py})")
+            rows.append("\n".join(lines))
+        except Exception as e:
+            rows.append(f"{name} ({ticker}): ⚠️ fetch failed ({e})")
 
-    _ANALYZE_KEYWORDS = ["analyze", "analysis", "分析", "帮我看看", "帮我分析", "研究一下"]
-    is_analyze = any(k in message for k in _ANALYZE_KEYWORDS)
-    if is_analyze and tickers:
-        return {"tools": ["trading_agent"], "tickers": tickers}
-    # Analyze by company name (no ticker in message) — resolve via alias map later
-    if is_analyze and not tickers:
-        # Extract company name: remove intent words and punctuation
-        clean = message
-        for w in _ANALYZE_KEYWORDS + ["一下", "帮我", "请", "?", "？"]:
-            clean = clean.replace(w, " ")
-        company_name = clean.strip()
-        if company_name:
-            return {"tools": ["trading_agent"], "tickers": [], "company_name": company_name}
-
-    tools = []
-    if agent_type == "global" or market in (None, "ALL"):
-        tools = ["local_data", "openbb_indices"]
-    else:
-        tools = ["local_data", "local_signals", "openbb_indices"]
-    if any(w in msg_lower for w in ["news", "headline", "article"]):
-        tools.append("local_news")
-        if tickers:
-            tools.append("openbb_news")
-    is_us = market in ("US", None, "ALL")
-    if any(w in msg_lower for w in ["gainer", "top gain", "best perform", "biggest gain"]):
-        tools.append("openbb_gainers") if is_us else None
-    if any(w in msg_lower for w in ["loser", "worst", "biggest drop", "biggest fall"]):
-        tools.append("openbb_losers") if is_us else None
-    if any(w in msg_lower for w in ["active", "most traded", "high volume"]):
-        tools.append("openbb_active") if is_us else None
-    if tickers:
-        tools.append("openbb_quote")
-    if any(w in msg_lower for w in ["internet", "search", "browse", "web", "online",
-                                     "google", "latest", "recent news"]):
-        tools.append("web_search")
-
-    return {"tools": list(dict.fromkeys(tools)), "tickers": tickers}
+    if not rows:
+        return ""
+    return "=== CN PEER FINANCIALS (akshare, annual) ===\n" + "\n".join(rows)
 
 
-def _web_search(query: str, max_results: int = 6) -> str:
-    """Search the web via DuckDuckGo. Returns compact text for LLM context."""
+# ── Extractor ─────────────────────────────────────────────────────────
+
+_EXTRACT_TRIGGERS = {
+    "营收", "净利润", "收益", "业绩", "revenue", "profit", "earnings",
+    "financial", "增长", "下滑", "财报", "年报",
+}
+
+
+def _clean_web_text(text: str) -> str:
+    """Step 1 of extraction: remove noise from raw web content.
+
+    Strips HTML artifacts, navigation fragments, ads, and repetitive boilerplate
+    that survive after fetch/search. Leaves only readable content.
+    """
+    import re as _re
+    import html as _html
+    # Unescape HTML entities (&amp; &nbsp; etc.)
+    text = _html.unescape(text)
+    # Remove residual HTML tags (e.g. from partially-fetched pages)
+    text = _re.sub(r'<[^>]{1,200}>', ' ', text)
+    # Remove URLs embedded mid-text (keep line-start URLs for source tracking)
+    text = _re.sub(r'(?<!\n)\s+https?://\S+', ' ', text)
+    # Collapse runs of whitespace / blank lines
+    text = _re.sub(r'\n{3,}', '\n\n', text)
+    text = _re.sub(r'[ \t]{2,}', ' ', text)
+    # Remove common navigation/boilerplate fragments
+    _boilerplate = [
+        r'版权所有.*?保留', r'copyright.*?reserved', r'cookie.*?policy',
+        r'隐私政策', r'服务条款', r'免责声明\s*$', r'广告', r'点击查看',
+        r'登录\s*/\s*注册', r'下载APP',
+    ]
+    for pat in _boilerplate:
+        text = _re.sub(pat, '', text, flags=_re.IGNORECASE)
+    return text.strip()
+
+
+def _extract_financials(tool_results: dict, companies_hint: list,
+                        message: str) -> str:
+    """Relevance-filtered extractor: clean noise → LLM extracts only content relevant to the question.
+
+    Step 1: _clean_web_text strips HTML artifacts and boilerplate.
+    Step 2: LLM extracts only content relevant to the user's question — discards off-topic results
+            (geopolitics, general news, unrelated company coverage) by LLM judgment, not hardcoded rules.
+
+    Returns "" if the web content contains nothing relevant to the question.
+    """
+    raw_parts = []
+    if tool_results.get("fetch_url"):
+        raw_parts.append(_clean_web_text(tool_results["fetch_url"])[:1500])
+    if tool_results.get("web_search"):
+        raw_parts.append(_clean_web_text(tool_results["web_search"])[:2500])
+    if not raw_parts:
+        return ""
+
+    raw_text = "\n\n".join(raw_parts)
+
+    extractor_system = "You are a relevance filter and information extractor. Your job is to extract only the content that is directly relevant to the user's question, and discard everything else."
+    extractor_prompt = f"""User's question: {message}
+
+Web content to filter:
+{raw_text}
+
+Instructions:
+- Extract ONLY content that directly answers or informs the user's question (companies, revenue, profit, dates, events related to the question)
+- DISCARD entire snippets that are off-topic: geopolitics, unrelated company news, general AI policy, anything not about the specific companies or financials asked about
+- Keep all relevant facts, numbers, dates, names exactly as-is — do not paraphrase or add analysis
+- If the entire content is off-topic and contains nothing relevant to the question, respond with exactly: NONE
+- Use the same language as the source"""
+
+    try:
+        raw = _call_llm(extractor_system, [], extractor_prompt)
+        raw = raw.strip()
+        if not raw or raw == "NONE":
+            print(f"[extractor] off-topic — no relevant content found", flush=True)
+            return ""
+
+        print(f"[extractor] extracted ({len(raw)} chars)", flush=True)
+        return raw
+
+    except Exception as e:
+        print(f"[extractor] failed: {e}", flush=True)
+        return ""
+
+
+def _fetch_url(url: str, max_chars: int = 1500) -> str:
+    """Fetch and extract readable text from a specific URL (e.g. a news article)."""
+    try:
+        import urllib.request as _ur
+        import html as _html
+        import re as _re
+        req = _ur.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (compatible; StockAgent/1.0)",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        })
+        with _ur.urlopen(req, timeout=10) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+        # Strip HTML tags
+        text = _re.sub(r'<script[^>]*>.*?</script>', '', raw, flags=_re.DOTALL | _re.IGNORECASE)
+        text = _re.sub(r'<style[^>]*>.*?</style>', '', text, flags=_re.DOTALL | _re.IGNORECASE)
+        text = _re.sub(r'<[^>]+>', ' ', text)
+        text = _html.unescape(text)
+        text = _re.sub(r'\s+', ' ', text).strip()
+        return f"[Article from {url}]\n\n{text[:max_chars]}"
+    except Exception as e:
+        return f"(fetch_url failed for {url}: {e})"
+
+
+# Domains that indicate DDG returned garbage (off-topic generic sites)
+_DDG_GARBAGE_DOMAINS = {
+    "wordpress.com", "wordpress.org", "nhs.uk", "imdb.com", "healthcenter.com",
+    "wikipedia.org", "amazon.com", "apple.com", "microsoft.com", "google.com",
+    "suoxinkj.com", "chinairn.com", "aiqicha.baidu.com",
+}
+
+def _web_search(query: str, max_results: int = 6, body_chars: int = 0,
+                region: str = "wt-wt") -> str:
+    """Search the web via DuckDuckGo. Returns compact text for LLM context.
+
+    body_chars: max chars per result body. 0 = no truncation (take full DDG snippet).
+    Note: DDG snippets are already short (~200-500 chars) — truncating them further
+    just loses information. Use fetch_url on a specific result to get full article text.
+    """
+    import re as _re
     try:
         try:
             from ddgs import DDGS
@@ -478,10 +1073,17 @@ def _web_search(query: str, max_results: int = 6) -> str:
             from duckduckgo_search import DDGS
         results = []
         with DDGS() as ddgs:
-            for r in ddgs.text(query, max_results=max_results):
+            for r in ddgs.text(query, region=region, max_results=max_results):
                 title = r.get("title", "")
-                body  = r.get("body", "")[:200]
+                body  = r.get("body", "")
+                if body_chars > 0:
+                    body = body[:body_chars]
                 href  = r.get("href", "")
+                # Skip garbage domains
+                m = _re.match(r'https?://(?:www\.)?([^/]+)', href)
+                domain = m.group(1) if m else ""
+                if any(domain == g or domain.endswith("." + g) for g in _DDG_GARBAGE_DOMAINS):
+                    continue
                 results.append(f"• {title}\n  {body}\n  {href}")
         if not results:
             return "(no web results)"
@@ -490,8 +1092,21 @@ def _web_search(query: str, max_results: int = 6) -> str:
         return f"(web search failed: {e})"
 
 
+_SOURCE_BLOCKLIST = {
+    "google.com", "play.google.com", "accounts.google.com", "photos.google.com",
+    "facebook.com", "twitter.com", "x.com", "instagram.com", "tiktok.com",
+    "youtube.com", "reddit.com", "pinterest.com", "linkedin.com",
+    "apple.com", "microsoft.com", "amazon.com",
+    # Spam / off-topic domains seen in DDG results
+    "suoxinkj.com", "wordpress.com", "wordpress.org", "nhs.uk", "imdb.com",
+    "baijiahao.baidu.com", "aiqicha.baidu.com", "chinairn.com",
+}
+
+
 def _extract_sources(web_result: str) -> str:
-    """Extract source URLs and titles from _web_search output. Returns a markdown footer."""
+    """Extract source URLs and titles from _web_search output. Returns a markdown footer.
+    Filters out obviously irrelevant sources (social media, tech company homepages, etc.)."""
+    import re as _re
     sources = []
     current_title = ""
     for line in web_result.split("\n"):
@@ -499,7 +1114,19 @@ def _extract_sources(web_result: str) -> str:
         if stripped.startswith("•"):
             current_title = stripped[1:].strip()
         elif stripped.startswith("http"):
-            sources.append((current_title[:70] if current_title else stripped[:70], stripped))
+            url = stripped
+            # Extract domain and skip blocklisted ones
+            m = _re.match(r'https?://(?:www\.)?([^/]+)', url)
+            domain = m.group(1) if m else ""
+            if any(domain == b or domain.endswith("." + b) for b in _SOURCE_BLOCKLIST):
+                current_title = ""
+                continue
+            # Skip titles that are clearly off-topic
+            _skip_title_kw = ["ebook", "pdf 免费", "gemini for google", "提示词指南", "wordpress"]
+            if any(kw in current_title.lower() for kw in _skip_title_kw):
+                current_title = ""
+                continue
+            sources.append((current_title[:70] if current_title else domain, url))
             current_title = ""
     if not sources:
         return ""
@@ -507,53 +1134,79 @@ def _extract_sources(web_result: str) -> str:
     return "\n\n---\n**🔍 Sources:**\n" + "\n".join(parts)
 
 
-def _execute_tools(tools, tickers, market, data_dir, message=""):
-    """Execute selected tools in parallel. Returns dict of tool_name → result text."""
-    from concurrent.futures import ThreadPoolExecutor, as_completed
+_MARKET_YF_SUFFIX = {
+    "HK": ".HK", "JP": ".T", "KR": ".KS", "TW": ".TW",
+    "AU": ".AX", "IN": ".NS", "UK": ".L", "DE": ".DE",
+    "FR": ".PA", "BR": ".SA",
+}
 
-    is_global = market in (None, "ALL", "global")
+
+def _apply_market_suffix(ticker: str, market: str | None) -> str:
+    """Append yfinance exchange suffix if the ticker looks bare (no dot yet)."""
+    if not market or "." in ticker:
+        return ticker
+    suffix = _MARKET_YF_SUFFIX.get(market, "")
+    return ticker + suffix if suffix else ticker
+
+
+def _build_macro_search_query(message: str, market: str | None) -> str:
+    """Convert a potentially Chinese/mixed financial question into a clean English search query.
+
+    Maps known topic keywords to good English query strings so DuckDuckGo returns
+    relevant financial news rather than garbage.
+    """
+    msg_l = message.lower()
+
+    # Capital flow / money flow
+    if any(w in msg_l for w in ["capital flow", "foreign capital", "资本流", "外资", "资金流", "钱去哪"]):
+        return "global foreign capital outflows 2025 where is money going safe haven"
+
+    # Interest rates / monetary policy
+    if any(w in msg_l for w in ["interest rate", "rate hike", "rate cut", "fed", "利率", "加息", "降息", "央行"]):
+        return "central bank interest rate decision 2025 fed ecb boj impact"
+
+    # Inflation / CPI
+    if any(w in msg_l for w in ["inflation", "cpi", "通胀", "通货膨胀", "物价"]):
+        return "global inflation CPI 2025 latest data impact markets"
+
+    # Recession / economic slowdown
+    if any(w in msg_l for w in ["recession", "slowdown", "gdp", "经济衰退", "经济放缓", "gdp增速"]):
+        return "global recession risk GDP slowdown 2025 economic outlook"
+
+    # Trade war / tariffs
+    if any(w in msg_l for w in ["tariff", "trade war", "关税", "贸易战", "贸易摩擦"]):
+        return "US China trade war tariffs 2025 impact markets"
+
+    # USD / dollar strength
+    if any(w in msg_l for w in ["dollar", "usd", "美元", "美元走强", "汇率"]):
+        return "US dollar strength DXY 2025 emerging markets impact"
+
+    # Sector / industry
+    if any(w in msg_l for w in ["semiconductor", "半导体", "chip", "芯片"]):
+        return "semiconductor industry outlook 2025 demand AI chips"
+    if any(w in msg_l for w in ["ai", "artificial intelligence", "人工智能"]):
+        return "AI artificial intelligence stocks market outlook 2025"
+    if any(w in msg_l for w in ["energy", "oil", "crude", "能源", "石油", "原油"]):
+        return "oil energy prices 2025 global demand supply outlook"
+
+    # Geopolitical
+    if any(w in msg_l for w in ["geopolit", "war", "conflict", "地缘", "战争", "冲突"]):
+        return "geopolitical risk 2025 markets impact global"
+
+    # Generic global market question — strip non-ASCII for a cleaner query
+    import re as _re
+    ascii_only = _re.sub(r'[^\x00-\x7F]+', ' ', message).strip()
+    market_prefix = f"{market} market" if market and market not in (None, "ALL", "global") else "global markets"
+    query = f"{market_prefix} {ascii_only[:100]}".strip()
+    return query if len(query) > 10 else f"{market_prefix} outlook 2025"
+
+
+def _run_openbb_tools(tools, tickers, market, data_dir, message=""):
+    """Run OpenBB tools in parallel. Returns dict of tool_name → result text."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     def _run(name):
         try:
-            # Local data tools
-            if name == "local_data":
-                return name, _load_global_context(data_dir) if is_global else _load_data_context(market, data_dir)
-            if name == "local_news":
-                return name, "(no per-market news for global agent)" if is_global else _load_news_context(market, data_dir)
-            if name == "local_signals":
-                return name, _load_global_context(data_dir) if is_global else _load_signal_context(market, data_dir)
-
-            # Web search
-            if name == "web_search":
-                search_tickers = list(tickers)
-                # If no tickers specified but user asks about movers, auto-load top gainers
-                if not search_tickers and any(w in message.lower() for w in
-                        ["gainer", "mover", "top gain", "best perform", "surge", "jump"]):
-                    try:
-                        import glob as _glob, os as _os, pandas as _pd
-                        rows = []
-                        for p in _glob.glob(_os.path.join(data_dir, "markets", "*", "market_daily_*.parquet")):
-                            df = _pd.read_parquet(p)
-                            if not df.empty:
-                                rows.append(df.sort_values("date").groupby("ticker").tail(1))
-                        if rows:
-                            combined = _pd.concat(rows).dropna(subset=["return_1d"])
-                            if market and market not in (None, "ALL", "global"):
-                                combined = combined[combined.get("market", combined.get("ticker", combined)) == market] if "market" in combined.columns else combined
-                            top = combined.nlargest(5, "return_1d")["ticker"].tolist()
-                            search_tickers = top
-                    except Exception:
-                        pass
-                if search_tickers:
-                    results = []
-                    for t in search_tickers[:5]:
-                        r = _web_search(f"{t} stock news today", max_results=3)
-                        results.append(r)
-                    return name, "\n\n".join(results)
-                else:
-                    query = f"{market or ''} {message}".strip()
-                    return name, _web_search(query)
-
             # OpenBB live tools
             try:
                 from web.openbb_tools import (get_gainers, get_losers, get_most_active,
@@ -570,25 +1223,30 @@ def _execute_tools(tools, tickers, market, data_dir, message=""):
             if name == "openbb_losers":   return name, get_losers()
             if name == "openbb_active":   return name, get_most_active()
             if name == "openbb_indices":  return name, get_major_indices()
+            # Apply market suffix (e.g. .HK, .T) for yfinance-backed tools
+            suffixed = [_apply_market_suffix(t, market) for t in tickers]
             if name == "openbb_quote" and tickers:
-                return name, get_stock_quote(",".join(tickers[:3]))
+                return name, get_stock_quote(",".join(suffixed[:3]))
             if name == "openbb_news" and tickers:
-                return name, get_company_news(tickers[0])
+                return name, get_company_news(suffixed[0])
             if name == "openbb_history" and tickers:
-                return name, get_stock_history(tickers[0])
+                return name, get_stock_history(suffixed[0])
             if name == "openbb_profile" and tickers:
-                return name, get_company_profile(tickers[0])
+                return name, get_company_profile(suffixed[0])
             if name == "openbb_fundamentals" and tickers:
-                return name, get_fundamentals(tickers[0])
+                # Run fundamentals for each ticker (up to 3), combine results
+                parts = []
+                for t in suffixed[:3]:
+                    parts.append(f"[{t}]\n{get_fundamentals(t)}")
+                return name, "\n\n".join(parts)
 
             return name, "(skipped — no tickers provided)"
         except Exception as e:
             return name, f"(tool error: {e})"
 
     results = {}
-    non_ta = [t for t in tools if t != "trading_agent"]
     with ThreadPoolExecutor(max_workers=6) as ex:
-        futures = {ex.submit(_run, t): t for t in non_ta}
+        futures = {ex.submit(_run, t): t for t in tools}
         for future in futures:
             name, result = future.result()
             results[name] = result
@@ -597,103 +1255,38 @@ def _execute_tools(tools, tickers, market, data_dir, message=""):
 
 # ── System prompts per agent type ────────────────────────────────────
 
-_BEGINNER_STYLE = """
-## Your audience
-You are talking to stock market beginners who may not know financial jargon.
-Your responses must be educational, clear, and easy to understand.
-
-## How to write responses
-1. **Walk through your reasoning step by step** — don't just state conclusions, show how you got there.
-   Example: "First, I look at the price change: it went up +8%. That's a big single-day move.
-   Next, I check WHY — the news shows an earnings beat. This explains the jump."
-
-2. **Always explain financial terms** the first time you use them.
-   Example: "volume ratio (this measures how much more than usual people are trading this stock —
-   a ratio of 3× means 3 times the normal daily volume, which signals unusual interest)"
-
-3. **Use simple analogies** to make numbers meaningful.
-   Example: don't just say "market cap ¥50B" — say "market cap ¥50B (roughly the size of a mid-sized regional bank)"
-
-4. **Explain what signals mean in plain language.**
-   - High volume → "more people than usual are buying/selling this stock today"
-   - Price gap up → "the stock opened much higher than yesterday's close — usually triggered by overnight news"
-   - RSI > 70 → "the stock has risen very fast recently and may be 'overbought' — meaning it might slow down soon"
-   - Capital inflow → "big institutional investors are putting money into this stock"
-
-5. **End with a plain-language takeaway** — what should a beginner actually understand from this?
-
-6. **Format clearly** with headers, bullet points, and short paragraphs. Never write a wall of text."""
-
-
 SYSTEM_PROMPTS = {
-    "data": """You are the {market} Market Data Guide — a friendly teacher helping stock market beginners understand market data.
-You have access to the stock universe, daily prices, market cap, and index data for {market}.
+    "market": """You are a financial analyst for the {market} market.
 
-{beginner_style}
+IMPORTANT: All tools have already run. Results are in the DATA block below. Answer directly using that data — do NOT ask the user for more data, do NOT ask for permission, do NOT ask which companies to include. If data is missing for a specific stock, note it in one word ("unavailable") and move on.
 
-When showing stock data, always include: ticker code + full company name + what the number means.""".replace("{beginner_style}", _BEGINNER_STYLE),
+Data available: stock prices (return_1d, return_20d), market cap, vol_ratio, news, signals, capital flow, peer comparison reports, live data from OpenBB.
+Prefer live data (labeled "LIVE MARKET DATA") over local data when both are present — it's more current.
 
-    "news": """You are the {market} Market News Guide — a friendly teacher helping stock market beginners understand financial news.
-You have access to company news articles for {market}.
+## How to respond
+- Lead with data and specific numbers. Never pad with definitions or analogies.
+- Answer the specific question asked — don't force a fixed structure onto every response.
+- For peer/company comparisons: ONE table only. Merge price + financials into a single table. Do NOT repeat the same company list multiple times. Mark missing data as "—" (not "unavailable" repeated in paragraphs).
+- For market overview: cover direction, notable movers, and key drivers.
+- If a Task is specified below, follow it precisely — it defines exactly what to cover.
+- If PEER AGENT data is in DATA: use its tables directly — do NOT restate or re-explain what is already in the table. Add only interpretation and the answer to the user's specific question.
+- Calibrate depth to the question: quick fact lookup → short; analysis/explanation → go deep, cover all angles.
+- Use local price data (return_1d, return_20d, market_cap, vol_ratio) even when revenue/profit is absent — price momentum is a valid proxy for relative strength.
+- Use headers and bullet points where they help clarity, not by default.""",
 
-{beginner_style}
+    "global": """You are a financial analyst covering global markets.
 
-When explaining news, always cover: what happened → why it matters → what effect it could have on the stock price.""".replace("{beginner_style}", _BEGINNER_STYLE),
+IMPORTANT: All tools have already run. Results are in the DATA block below. Answer directly — do NOT ask the user for more data, do NOT ask for permission, do NOT ask which companies to analyze. If data is missing, note it in one word and continue.
 
-    "signal": """You are the {market} Market Signal Guide — a friendly teacher helping stock market beginners understand market signals and alerts.
-You synthesize prices, news, and alerts to explain what's happening in the market.
+Data available: capital flows by market, macro indicators (rates, commodities, VIX, currencies), sector performance, geopolitical news across 13 markets.
 
-{beginner_style}
-
-When explaining signals, always follow this structure:
-1. **What I see** (the raw data/alert)
-2. **What it means** (explanation in plain language)
-3. **Why it might be happening** (connect to news or broader context)
-4. **What to watch** (what a beginner should pay attention to next)""".replace("{beginner_style}", _BEGINNER_STYLE),
-
-    "market": """You are the {market} Market Guide — a knowledgeable but approachable teacher helping stock market beginners understand what's happening in the {market} market.
-
-You have comprehensive data: stock prices, news, market signals, alerts, capital flow, live real-time data from OpenBB.
-Prefer LIVE MARKET DATA (labeled "LIVE MARKET DATA") over local data when both are available — it's more current.
-
-{beginner_style}
-
-## Response structure for market questions
-For questions like "what's happening" or "top movers", use this structure:
-### 📊 Market Overview
-(1-2 sentences on the overall market mood today — is it up or down, calm or volatile?)
-
-### 🚀 Notable Movers
-(List 3-5 stocks with: name, price change, AND a plain-language explanation of why)
-
-### 📰 What the News Says
-(Key news stories and what they mean for investors)
-
-### 🔍 Signals Worth Watching
-(Any unusual patterns — explain each one in plain language)
-
-### 💡 Key Takeaway
-(1-2 sentences: what should a beginner take away from today's market?)""".replace("{beginner_style}", _BEGINNER_STYLE),
-
-    "global": """You are the Global Market Guide — a knowledgeable but approachable teacher helping stock market beginners understand global financial markets.
-
-You cover 13 markets worldwide. You have access to macro indicators, sector data, cross-market correlations, and live real-time data from OpenBB (indices, top movers, company data).
-Prefer LIVE MARKET DATA over local data when both are available.
-
-{beginner_style}
-
-## Response structure for global questions
-### 🌍 Global Snapshot
-(What's the overall mood across world markets today?)
-
-### 📈 Index Movements
-(Key indices with plain-language context — e.g., "S&P 500 is up 0.5%, meaning most large US companies gained today")
-
-### 🔗 Cross-Market Story
-(Is there a theme connecting markets? e.g., "Tech sold off globally after US inflation data surprised")
-
-### 💡 What This Means for a Beginner
-(Plain-language summary of the most important thing to understand)""".replace("{beginner_style}", _BEGINNER_STYLE),
+## How to respond
+- Lead with data. Cite specific numbers from the DATA block — don't summarize vaguely.
+- Answer the specific question asked. If asked where money is flowing, name the markets and the numbers.
+- Web search results supplement local data — use both, cite the source when relevant.
+- If a Task is specified below, treat it as a required checklist — address every point in it.
+- Calibrate depth to the question: a simple lookup → concise; an analytical question → full depth, cover all mechanisms and evidence.
+- Use headers where they help, not by default.""",
 }
 
 
@@ -834,8 +1427,7 @@ def _find_company_in_markets(name: str, data_dir: str) -> tuple[str, str] | tupl
 
 
 def _web_to_local_enrichment(web_result: str, user_question: str,
-                              data_dir: str, market: str,
-                              provider: str, api_key: str) -> str:
+                              data_dir: str, market: str) -> str:
     """
     Two-step post-web-search local enrichment:
 
@@ -863,10 +1455,7 @@ def _web_to_local_enrichment(web_result: str, user_question: str,
     )
     plan = {}
     try:
-        if provider == "anthropic":
-            raw = _call_anthropic(api_key, planner_system, [], planner_user, max_tokens=120)
-        else:
-            raw = _call_openai(api_key, planner_system, [], planner_user, max_tokens=120)
+        raw = _call_llm(planner_system, [], planner_user)
         import re as _re2
         m = _re2.search(r'\{.*\}', raw, _re2.DOTALL)
         if m:
@@ -958,77 +1547,68 @@ def _web_to_local_enrichment(web_result: str, user_question: str,
         except Exception:
             pass
 
-    # 2c. Regex fallback if planner found nothing
-    if not parts and not plan:
-        try:
-            try:
-                from web.local_trading_agent import _discover_local_from_web
-            except ImportError:
-                from local_trading_agent import _discover_local_from_web
-            hint = [market] if market and market not in (None, "ALL", "global") else None
-            fallback = _discover_local_from_web(web_result, data_dir, hint)
-            if fallback:
-                parts.append(fallback)
-        except Exception:
-            pass
-
     return "\n\n".join(parts) if parts else ""
 
 
-def agent_chat(agent_type, market, message, data_dir, chat_history=None, language=None):
+def agent_chat(agent_type, market, message, data_dir, chat_history=None,
+               language=None, context=None):
     """
     LLM-backed agent chat with LLM router.
 
-    Flow:
-      1. Router LLM  → decides which tools to invoke + extracts tickers
-      2. Tool execution → runs selected tools in parallel
-      3. Synthesizer LLM → produces final beginner-friendly response
+    Args:
+        context: dict with keys {ticker, market, company_name} — carried across turns
+                 so follow-up messages like "what about its PE?" resolve correctly.
+    Returns:
+        (response_str, updated_context_dict)
     """
     import re as _re
 
+    context = context or {}
+
     provider, api_key = get_llm_provider()
     if provider is None:
-        return None
+        return None, context
 
-    # 1. Route: ask LLM which tools to call
-    route = _route_message(message, market, agent_type, provider, api_key)
-    tools = route.get("tools", ["local_data"])
-    tickers = route.get("tickers", [])
-    company_name = route.get("company_name", "")
-
-    # If LLM extracted a company name but no ticker, resolve it.
-    # For CN agent: only look up A-shares; if found elsewhere, tell user to ask the right agent.
     _MARKET_NAMES = {
         "CN": "A股", "HK": "港股", "US": "美股", "JP": "日股",
         "KR": "韩股", "TW": "台股", "IN": "印度股", "UK": "英股",
         "DE": "德股", "FR": "法股", "AU": "澳股", "BR": "巴西股", "SA": "沙特股",
     }
-    # Single-market agents: check that every resolved ticker belongs to this market.
-    # If a ticker belongs to a different market, redirect the user.
-    # Global agent has no boundary — skip this check.
-    if "trading_agent" in tools and market and market not in (None, "ALL", "global"):
+
+    # ── Phase 1: PLAN ────────────────────────────────────────────────────
+    plan = _plan_message(message, market, agent_type, chat_history)
+
+
+    intent       = plan.get("intent", "general")
+    tickers      = plan.get("tickers", [])
+    company_name = plan.get("company_name", "")
+    response_focus = plan.get("response_focus", "")
+    tools        = list(dict.fromkeys(s["tool"] for s in plan.get("steps", []) if s.get("tool") in TOOLS))
+
+    # Inherit ticker from previous turn when question uses pronouns
+    if not tickers and not company_name and context.get("ticker"):
+        tickers = [context["ticker"]]
+        company_name = context.get("company_name", "")
+
+    # ── Company-name → ticker resolution & market boundary check ─────────
+    def _redirect_msg(name_or_ticker, ticker_market):
+        current_label = _MARKET_NAMES.get(market, market)
+        alt_label     = _MARKET_NAMES.get(ticker_market, ticker_market)
+        return (f"**{name_or_ticker}** 不是{current_label}，"
+                f"它在**{alt_label}**上市。\n\n"
+                f"请切换到 **{ticker_market} Market Agent** 提问。")
+
+    if intent == "single_stock" and market and market not in (None, "ALL", "global"):
         try:
             from web.local_trading_agent import detect_market as _detect
         except ImportError:
             from local_trading_agent import detect_market as _detect
 
-        def _redirect_msg(name_or_ticker, ticker_market):
-            current_label = _MARKET_NAMES.get(market, market)
-            alt_label     = _MARKET_NAMES.get(ticker_market, ticker_market)
-            return (f"**{name_or_ticker}** 不是{current_label}，"
-                    f"它在**{alt_label}**上市。\n\n"
-                    f"请切换到 **{ticker_market} Market Agent** 提问。")
-
-        # Case 1: tickers already extracted — check each one
         if tickers:
             foreign = [t for t in tickers if _detect(t) != market]
             if foreign:
                 tk = foreign[0]
-                tk_market = _detect(tk)
-                display = company_name or tk
-                return _redirect_msg(display, tk_market)
-
-        # Case 2: company name but no ticker — try local market first, then others
+                return _redirect_msg(company_name or tk, _detect(tk)), context
         elif company_name:
             local_ticker = _resolve_cn_name_to_ticker(company_name, data_dir) \
                 if market == "CN" else _find_company_in_market(company_name, market, data_dir)
@@ -1036,95 +1616,123 @@ def agent_chat(agent_type, market, message, data_dir, chat_history=None, languag
                 tickers = [local_ticker]
             else:
                 alt_ticker, alt_market = _find_company_in_markets(company_name, data_dir)
-                current_label = _MARKET_NAMES.get(market, market)
                 if alt_ticker and alt_market:
-                    return _redirect_msg(company_name, alt_market)
+                    return _redirect_msg(company_name, alt_market), context
                 else:
-                    return (f"**{company_name}** 不在{current_label}市场，"
-                            f"本 agent 只覆盖{current_label}。\n\n"
-                            f"请切换到对应的 Market Agent 提问。")
+                    company_name = ""
 
-    # For the global agent: resolve company_name → ticker across all markets.
-    # Single-market agents handle this above (with redirect); global agent has no boundary.
-    if "trading_agent" in tools and not tickers and company_name \
+    # Global agent: resolve company_name → ticker across all markets
+    if intent == "single_stock" and not tickers and company_name \
             and (not market or market in (None, "ALL", "global")):
-        resolved_ticker, resolved_market = _find_company_in_markets(company_name, data_dir)
+        resolved_ticker, _ = _find_company_in_markets(company_name, data_dir)
         if resolved_ticker:
             tickers = [resolved_ticker]
-        # If still not found, let it fall through to web_search / LLM synthesis
 
-    # Force web_search if user explicitly requests it (override LLM router)
-    _WEB_TRIGGERS = ["internet", "search", "browse", "google", "web", "online",
-                     "find online", "look up", "look it up", "搜索", "搜一下",
-                     "网上", "网络", "查一查", "查找"]
-    if any(w in message.lower() for w in _WEB_TRIGGERS) and "web_search" not in tools:
-        tools = list(tools) + ["web_search"]
-    # 2a. Sector agent
-    if "sector_agent" in tools and tickers:
-        sector_query = tickers[0]
+    # Save resolved ticker into context for future turns
+    if tickers:
+        context = {
+            "ticker":       tickers[0],
+            "market":       market or context.get("market", ""),
+            "company_name": company_name or context.get("company_name", tickers[0]),
+        }
+
+    # ── Phase 2: EXECUTE PLAN ────────────────────────────────────────────
+    # Independent steps run in parallel; dependent steps run sequentially.
+    # trading_agent and sector_agent are handled inside _execute_plan.
+    tool_results = _execute_plan(plan, tickers, market, agent_type, data_dir, message)
+
+    # ── Phase 2b-inject: Global agent always needs local context ─────────
+    # The planner may not always include a local_data step (e.g. macro questions
+    # that only request web_search). For global agent, local context contains
+    # capital flows, macro indicators, sector performance — always inject it.
+    is_global_agent = agent_type == "global" or market in (None, "ALL")
+    if is_global_agent and "local_data" not in tool_results:
+        tool_results["local_data"] = _load_global_context(data_dir)
+
+    # ── Phase 2b-ext: CN peer financials via akshare (bypasses unreliable web search) ──
+    # For CN peer_comparison, pull revenue/profit directly from akshare instead of DDG.
+    _is_cn_peer = (intent == "peer_comparison" and (market == "CN" or any(
+        __import__("re").match(r"^\d{6}$", t) for t in tickers)))
+    if _is_cn_peer and tickers:
+        anchor = tickers[0]
+        _peer_tks = []
         try:
-            from web.local_trading_agent import local_sector_analyze
-        except ImportError:
-            from local_trading_agent import local_sector_analyze
-        return local_sector_analyze(sector_query, market, data_dir)
+            import pandas as _pd2, re as _re2
+            _uni = _pd2.read_parquet(f"{data_dir}/markets/CN/universe.parquet")
+            # Priority 1: tickers explicitly mentioned in web search results
+            _ws = tool_results.get("web_search", "")
+            # Only match valid A-share ticker prefixes (0xx=SZ, 3xx=SZ growth, 6xx=SH, 9xx=SH/BSE)
+            # Exclude numbers embedded in URL paths (preceded by /)
+            _ws_tks = list(dict.fromkeys(
+                t for t in _re2.findall(r"(?<![/\d])([0369]\d{5})(?!\d)", _ws)
+                if t != anchor
+            ))[:5]
+            # Priority 2: same-sector peers filtered by name relevance to 算力/服务器/计算
+            _COMPUTE_KEYWORDS = ["信息", "服务器", "算力", "计算", "数创", "长城", "同方", "浪潮"]
+            _anchor_row = _uni[_uni["ticker"].astype(str) == anchor]
+            _sector_peers = []
+            if not _anchor_row.empty and "sector" in _uni.columns:
+                _sector = _anchor_row.iloc[0]["sector"]
+                _sector_df = _uni[(_uni["sector"] == _sector) & (_uni["ticker"].astype(str) != anchor)]
+                # Prefer companies whose names contain compute-related keywords
+                _relevant = _sector_df[_sector_df["name"].apply(
+                    lambda n: any(k in str(n) for k in _COMPUTE_KEYWORDS))]
+                _sector_peers = _relevant["ticker"].astype(str).tolist()[:4]
+            _peer_tks = list(dict.fromkeys(_ws_tks + _sector_peers))[:6]
+        except Exception:
+            pass
+        ak_result = _cn_peer_financials(_peer_tks, anchor, data_dir)
+        if ak_result:
+            tool_results["cn_peer_financials"] = ak_result
+            print(f"[akshare] fetched peer financials for {[anchor]+_peer_tks}", flush=True)
 
-    # 2b. If trading_agent selected: route by market
-    #    US  → open-source TradingAgents (stable, yfinance-backed)
-    #    All others → our local multi-agent system (local pipeline + akshare/yfinance)
-    if "trading_agent" in tools and tickers:
-        ticker = tickers[0]
-        try:
-            from web.local_trading_agent import detect_market, local_trading_analyze
-        except ImportError:
-            from local_trading_agent import detect_market, local_trading_analyze
-        if detect_market(ticker) == "US":
-            return trading_agents_analyze(ticker)
-        else:
-            return local_trading_analyze(ticker, data_dir)
-
-    # 3. Execute all other tools in parallel
-    # Enrich the search message with recent ticker context from chat history
-    search_message = message
-    if "web_search" in tools and not tickers and chat_history:
-        # Pull tickers mentioned in the last few turns to give web search context
-        import re as _re2
-        recent_text = " ".join(m.get("content", "") for m in chat_history[-6:])
-        ctx_tickers  = _re2.findall(r'\b(\d{6})\b', recent_text)           # CN
-        ctx_tickers += [t for t in _re2.findall(r'\b([A-Z]{1,5})\b', recent_text)
-                        if t not in _ROUTER_IGNORE]                         # US
-        if ctx_tickers:
-            tickers = ctx_tickers[:2]
-        else:
-            # Inject company/ticker context into the search query string
-            search_message = recent_text[-200:] + " " + message
-    tool_results = _execute_tools(tools, tickers, market, data_dir, message=search_message)
+    # ── Phase 2c: EXTRACT (structure raw results into per-company financials) ─
+    # Trigger when question involves financial comparisons or revenue/profit data.
+    _needs_extraction = (
+        intent in ("peer_comparison",)
+        or any(w in message for w in _EXTRACT_TRIGGERS)
+    )
+    if _needs_extraction and (tool_results.get("web_search") or tool_results.get("fetch_url")):
+        companies_hint = []
+        if company_name:
+            companies_hint.append(company_name)
+        # Add any company names discovered during peer search (from web_search step 1)
+        import re as _re_ext
+        ws = tool_results.get("web_search", "")
+        found_cn = list(dict.fromkeys(_re_ext.findall(r'[\u4e00-\u9fff]{2,6}(?:信息|科技|股份|系统|数据|网络|通信|电子|智能)?', ws)))
+        companies_hint += [n for n in found_cn[:6] if n not in companies_hint]
+        extracted = _extract_financials(tool_results, companies_hint, message)
+        if extracted:
+            # Replace raw web_search in context with the clean extracted version
+            # Keep raw web_search available for source URLs but put extracted first
+            tool_results["web_summary"] = extracted
 
     # 4a. Web → local enrichment via LLM planner
-    #     After web search, ask LLM: "given web results + user question, what local data to fetch?"
-    #     LLM decides tickers/sectors to query; fallback to regex if planner fails.
-    if "web_search" in tool_results:
+    # Skip for peer_comparison — peer discovery is web-based, local enrichment adds noise.
+    if "web_search" in tool_results and intent not in ("peer_comparison",):
         web_raw = tool_results["web_search"]
         if "(web search failed" not in web_raw and "(no web results)" not in web_raw:
             local_enrichment = _web_to_local_enrichment(
-                web_raw, message, data_dir, market, provider, api_key
+                web_raw, message, data_dir, market
             )
             if local_enrichment:
                 tool_results["local_data_from_web"] = local_enrichment
 
     # 4b. Build combined context from tool outputs.
-    # Keep total chars low enough to stay under the model's token limit.
-    # Budget: ~8192 tokens total; reserve ~2000 for system prompt + history + completion.
-    # That leaves ~6192 tokens ≈ ~12000 chars for combined_context.
+    is_global_agent = agent_type == "global" or market in (None, "ALL")
+    # Order: primary analysis first, then structured financial data, then raw web
+    _priority = ["peer_agent", "trading_agent", "sector_agent", "cn_peer_financials", "web_summary"]
+    ordered_results = {k: tool_results[k] for k in _priority if k in tool_results}
+    for k, v in tool_results.items():
+        if k not in _priority:
+            ordered_results[k] = v
+
     context_parts = []
-    for tool_name, result in tool_results.items():
+    for tool_name, result in ordered_results.items():
         label = tool_name.replace("_", " ").upper()
-        if len(result) > 2500:
-            result = result[:2500] + "\n...(truncated)"
         context_parts.append(f"=== {label} ===\n{result}")
 
     combined_context = "\n\n".join(context_parts)
-    if len(combined_context) > 12000:
-        combined_context = combined_context[:12000] + "\n...(truncated)"
 
     # 5. Pick system prompt
     is_global = agent_type == "global" or market in (None, "ALL")
@@ -1133,86 +1741,75 @@ def agent_chat(agent_type, market, message, data_dir, chat_history=None, languag
     else:
         base_system = SYSTEM_PROMPTS["market"].format(market=market)
 
-    system = base_system + f"""
+    system = base_system
 
-RULES:
-1. Use Markdown: headers (##/###), bold (**text**), bullet points, tables.
-2. When listing stocks: **TICKER (Company Name)** — details.
-3. NEVER assume the reader knows financial terms — always explain in parentheses.
-4. Show reasoning step by step. Don't just state conclusions.
-5. End with a plain-language takeaway for beginners.
-6. Tools used to answer this: {', '.join(tools)}. Mention if data is live (OpenBB) vs cached (local pipeline).
-7. NEVER ask the user to paste or provide data. You have complete market data — use it directly.
-8. You CAN browse the internet. If WEB SEARCH results appear in your data below, summarize them directly.
-   NEVER say "I cannot browse the internet" or "I don't have real-time access" — you DO have web search.
-   If the search returned no useful results, say "I searched but couldn't find that information" instead."""
+    focus_block = f"\n\nTask: {response_focus}" if response_focus else ""
 
-    full_system = f"{system}\n\nCRITICAL: NEVER ask the user to provide or paste data. You already have COMPLETE access to all market data below. Use it directly to answer.\n\n--- YOUR COMPLETE MARKET DATA (use this to answer, do not ask user for more) ---\n{combined_context}"
+    # Tell the LLM that all fetching has already been done — data is in the DATA block.
+    _data_notes = []
+    if tool_results.get("peer_agent"):
+        _data_notes.append("PEER AGENT contains a complete peer comparison report with formatted tables (price + financials). Use it as the PRIMARY output — preserve its tables as-is, do NOT rewrite or re-summarize them. Only add web search findings as brief supplementary notes below.")
+    if tool_results.get("trading_agent"):
+        _data_notes.append("TRADING AGENT contains a complete stock analysis — use it as the primary source. Supplement with other DATA sections to answer the specific question.")
+    if tool_results.get("sector_agent"):
+        _data_notes.append("SECTOR AGENT contains a complete sector analysis — use it as the primary source.")
+    if tool_results.get("fetch_url"):
+        _data_notes.append("The URL in the user's message has already been fetched — its content is in the DATA section below. Do not say you cannot access it.")
+    if tool_results.get("web_search"):
+        _data_notes.append("Web search has already been performed — results are in the DATA section below.")
+    if "cn_peer_financials" in tool_results and "web_summary" in tool_results:
+        _data_notes.append("CN PEER FINANCIALS has structured annual data. EXTRACTED FINANCIALS may contain more recent figures — use both.")
+    if "cn_peer_financials" in tool_results:
+        _data_notes.append("IMPORTANT: Use the exact years shown in the data (e.g. 2024). Never relabel or shift years.")
+    _data_notes_block = "\n".join(_data_notes) + "\n\n" if _data_notes else ""
 
-    # 6. Build conversation history (last 10 turns)
+    full_system = (
+        f"{_data_notes_block}"
+        f"{system}{focus_block}\n\n"
+        f"--- DATA ---\n{combined_context}"
+    )
+
+    # 6. Build conversation history (last 4 turns)
     history_msgs = []
     if chat_history:
-        for msg in chat_history[-10:]:
+        for msg in chat_history[-4:]:
             role = "assistant" if msg.get("role") == "agent" else "user"
             history_msgs.append({"role": role, "content": msg["content"]})
 
-    # If web search was run, inject results directly into the user message
-    # so the LLM cannot fall back to "I can't browse the internet"
     web_result = tool_results.get("web_search", "")
-    if web_result and "(web search failed" not in web_result and "(no web results)" not in web_result:
+
+    # For peer_comparison where peer_agent ran: constrain synthesizer so it doesn't
+    # re-enumerate every company in prose after the tables already show the data.
+    wrapped_message = message
+    if intent == "peer_comparison" and tool_results.get("peer_agent"):
         wrapped_message = (
-            f"[Web search was performed. Results below — answer based on these results.]\n\n"
-            f"{web_result[:3000]}\n\n"
-            f"---\nUser question: {message}"
+            f"{message}\n\n"
+            "[INSTRUCTION] The PEER AGENT section already contains complete tables. "
+            "Output those tables verbatim. Then add ONLY a brief conclusion (≤5 bullet points): "
+            "which companies show the strongest growth, any key divergence vs the anchor, "
+            "and what the web search adds that is NOT already in the tables. "
+            "Do NOT re-list each company in prose. Do NOT repeat numbers already in the tables."
         )
-    else:
-        wrapped_message = message
+
+    print(f"[synthesis] system_chars={len(full_system)} history_turns={len(history_msgs)}", flush=True)
 
     try:
-        if provider == "anthropic":
-            result = _call_anthropic(api_key, full_system, history_msgs, wrapped_message, max_tokens=800)
-        else:
-            result = _call_openai(api_key, full_system, history_msgs, wrapped_message, max_tokens=800)
+        result = _call_llm(full_system, history_msgs, wrapped_message)
 
-        # Fallback: if response admits inability and web search wasn't used, retry with web search
-        _INABILITY_PHRASES = [
-            "don't have access", "cannot access", "i don't have", "not in my data",
-            "i'm unable to", "i cannot browse", "outside my knowledge",
-            "i don't have information", "no data available", "i lack",
-            "i cannot provide", "i do not have real-time",
-        ]
-        if (any(p in (result or "").lower() for p in _INABILITY_PHRASES)
-                and "web_search" not in tools):
-            fallback_results = _execute_tools(["web_search"], tickers, market, data_dir, message=search_message)
-            fb_web = fallback_results.get("web_search", "")
-            if fb_web and "(web search failed" not in fb_web and "(no web results)" not in fb_web:
-                fb_message = (
-                    f"[Fallback web search performed. Results below — answer based on these.]\n\n"
-                    f"{fb_web[:3000]}\n\n"
-                    f"---\nUser question: {message}"
-                )
-                tools = list(tools) + ["web_search"]
-                tool_results["web_search"] = fb_web
-                web_result = fb_web
-                if provider == "anthropic":
-                    result = _call_anthropic(api_key, full_system, history_msgs, fb_message)
-                else:
-                    result = _call_openai(api_key, full_system, history_msgs, fb_message)
-
-        # Append web sources footer if web search was used
+        # Append a compact sources footer as a fallback reference
         if web_result and "(web search failed" not in web_result and "(no web results)" not in web_result:
             sources_footer = _extract_sources(web_result)
-            if sources_footer:
+            if sources_footer and result and "http" not in result:
                 result = (result or "") + sources_footer
 
-        return result
+        return result or "", context
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return f"(error: {e})"
+        return f"(error: {e})", context
 
 
-def _call_anthropic(api_key, system, history, message, max_tokens=1000):
+def _call_anthropic(api_key, system, history, message, max_tokens=8096):
     """Call Anthropic Claude API."""
     import anthropic
     client = anthropic.Anthropic(api_key=api_key)
@@ -1244,7 +1841,7 @@ def _call_anthropic(api_key, system, history, message, max_tokens=1000):
         raise
 
 
-def _call_openai(api_key, system, history, message, max_tokens=1000):
+def _call_openai(api_key, system, history, message, max_tokens=None):
     """Call OpenAI-compatible API using config file settings."""
     from openai import OpenAI
     cfg = _load_llm_config()
@@ -1258,13 +1855,26 @@ def _call_openai(api_key, system, history, message, max_tokens=1000):
     messages.extend(history)
     messages.append({"role": "user", "content": message})
 
+    total_chars = sum(len(str(m.get("content",""))) for m in messages)
+    print(f"[openai] model={model} input_chars={total_chars} (~{total_chars//4}t)", flush=True)
+
+    # Only pass a token limit if explicitly requested; otherwise let the model decide.
+    token_kwargs = {}
+    if max_tokens is not None:
+        _new_token_param_models = ("o1", "o3", "o4", "gpt-5")
+        _use_completion_tokens = any(model.startswith(p) for p in _new_token_param_models)
+        token_kwargs = {"max_completion_tokens": max_tokens} if _use_completion_tokens else {"max_tokens": max_tokens}
+
     resp = client.chat.completions.create(
         model=model,
         messages=messages,
-        max_tokens=max_tokens,
         temperature=0.0,
+        **token_kwargs,
     )
-    return resp.choices[0].message.content
+    content = resp.choices[0].message.content or ""
+    finish = resp.choices[0].finish_reason
+    print(f"[openai] finish_reason={finish} output_chars={len(content)}", flush=True)
+    return content
 
 
 # ── TradingAgents deep analysis ───────────────────────────────────
@@ -1293,9 +1903,10 @@ def _patch_openai_context_truncation(model_token_limit: int = 8192, max_completi
         def _safe_create(self, *args, **kwargs):
             msgs = list(kwargs.get("messages") or [])
 
-            # Estimate message tokens (rough: 4 chars ≈ 1 token)
+            # Estimate message tokens. Chinese chars cost ~2t each, ASCII ~0.25t.
+            # Use a conservative 2 chars/token to avoid underestimating CJK content.
             def _tokens(m):
-                return len(str(m.get("content") or "")) // 4
+                return len(str(m.get("content") or "")) // 2
 
             msg_tokens = sum(_tokens(m) for m in msgs)
 
@@ -1543,22 +2154,6 @@ def trading_agents_analyze(ticker, date=None):
             local = _local_cn_supplement(ticker)
             if local:
                 result += "\n\n" + local
-
-        # If TradingAgents signals insufficient data, fall back to local multi-agent analysis.
-        # This handles Chinese ADRs (BABA, BIDU, JD, PDD, etc.) which are US-listed but
-        # have poor coverage in TradingAgents' remote fundamentals sources.
-        insufficient = (
-            isinstance(decision, dict) and "没有足够" in str(decision.get("reasoning", ""))
-        ) or "没有足够" in result
-        if insufficient:
-            try:
-                from web.local_trading_agent import local_trading_analyze
-            except ImportError:
-                from local_trading_agent import local_trading_analyze
-            data_dir = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"
-            )
-            return local_trading_analyze(ticker, data_dir, _allow_us=True)
 
         return result
     except Exception as e:

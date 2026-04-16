@@ -185,7 +185,7 @@
     </style>
     <style>
         /* ── Global Chat Panel ────────────────────────────────────── */
-        .chat-panel { position: fixed; top: 47px; right: -370px; width: 350px; min-width: 280px; max-width: 80vw; height: calc(100vh - 47px); background: #0d1117; border-left: 2px solid #30363d; border-top: 1px solid #30363d; display: flex; flex-direction: column; z-index: 200; transition: right 0.3s ease; box-shadow: -4px 0 20px rgba(0,0,0,0.5); }
+        .chat-panel { position: fixed; top: 47px; right: -105%; width: 350px; min-width: 280px; max-width: 80vw; height: calc(100vh - 47px); background: #0d1117; border-left: 2px solid #30363d; border-top: 1px solid #30363d; display: flex; flex-direction: column; z-index: 200; transition: right 0.3s ease; box-shadow: -4px 0 20px rgba(0,0,0,0.5); }
         .chat-panel.open { right: 0; }
         .chat-panel.resizing { transition: none; user-select: none; }
         .chat-resize-handle { position: absolute; top: 0; left: -4px; width: 8px; height: 100%; cursor: col-resize; z-index: 210; }
@@ -230,9 +230,9 @@
         .chat-typing .dot:nth-child(3) { animation-delay: 0.4s; }
         @keyframes typingBounce { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-4px); } }
         .chat-input-row { display: flex; gap: 8px; padding: 12px; background: #161b22; border-top: 1px solid #30363d; flex-shrink: 0; }
-        .chat-input-row input { flex: 1; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; padding: 8px 12px; font-size: 12px; font-family: monospace; outline: none; transition: border-color 0.15s; }
-        .chat-input-row input:focus { border-color: #58a6ff; }
-        .chat-input-row input::placeholder { color: #484f58; }
+        .chat-input-row textarea { flex: 1; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; padding: 8px 12px; font-size: 12px; font-family: monospace; outline: none; transition: border-color 0.15s; resize: none; min-height: 36px; max-height: 120px; line-height: 1.5; overflow-y: auto; }
+        .chat-input-row textarea:focus { border-color: #58a6ff; }
+        .chat-input-row textarea::placeholder { color: #484f58; }
         .chat-input-row button { background: #238636; border: 1px solid #2ea043; color: #fff; padding: 8px 16px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.15s; }
         .chat-input-row button:hover { background: #2ea043; }
         .chat-suggestions { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 12px 8px; flex-shrink: 0; }
@@ -373,7 +373,7 @@
             <div class="chat-suggestions" id="chat-suggestions"></div>
             <span class="watch-tag" onclick="openWatchModal()">👁 Watchlist <span id="wl-count" style="display:none;background:#1f6feb;color:#fff;border-radius:8px;padding:0 5px;margin-left:2px;font-size:10px;"></span></span>
             <div class="chat-input-row">
-                <input type="text" id="chat-input" placeholder="Ask about markets..." onkeydown="if(event.key==='Enter')sendMessage()" />
+                <textarea id="chat-input" placeholder="Ask about markets... (Shift+Enter for new line)" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage();}"></textarea>
                 <button onclick="sendMessage()">Send</button>
             </div>
         </div>
@@ -479,6 +479,7 @@
         panel.classList.add('open');
         document.body.classList.add('chat-open');
         const container = document.querySelector('.agents-container');
+        // Read offsetWidth after adding 'open' so the panel is visible and has correct width
         if (container) container.style.marginRight = panel.offsetWidth + 'px';
         // Sync selector
         const sel = document.getElementById('chat-agent-select');
@@ -527,6 +528,9 @@
     let _activeConvId = {};
     let currentChatAgent = null;
     let _convListOpen = false;
+    // Conversation context per agent: carries resolved ticker across turns
+    // so follow-up messages like "what about its PE?" work correctly.
+    const _agentContexts = {};
 
     (function _loadConversations() {
         try {
@@ -679,6 +683,13 @@
         syncChatPanelPosition();
         window.addEventListener('resize', syncChatPanelPosition);
         refreshWatchlistCount();
+
+        // Auto-resize textarea as user types
+        const chatInput = document.getElementById('chat-input');
+        chatInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+        });
     });
 
     // ── LLM Settings ───────────────────────────────────────────────
@@ -708,7 +719,10 @@
 
     function closeChat() {
         _showChatView();
-        document.getElementById('agent-chat-panel').classList.remove('open');
+        const panel = document.getElementById('agent-chat-panel');
+        // Clear any inline right set during resize so CSS transition takes over cleanly
+        panel.style.right = '';
+        panel.classList.remove('open');
         document.body.classList.remove('chat-open');
         const container = document.querySelector('.agents-container');
         if (container) container.style.marginRight = '';
@@ -786,6 +800,7 @@
         const text = input.value.trim();
         if (!text || !currentChatAgent) return;
         input.value = '';
+        input.style.height = 'auto';
         chatHistories[currentChatAgent].push({ role: 'user', text });
         saveChatHistories();
         renderMessages(currentChatAgent);
@@ -805,9 +820,14 @@
         } else {
             try {
                 const history = (chatHistories[currentChatAgent] || []).slice(-10).map(m => ({ role: m.role, content: m.text }));
-                const resp = await fetch('/api/agent-chat', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ agent: currentChatAgent, message: text, history }) });
+                const context = _agentContexts[currentChatAgent] || {};
+                const resp = await fetch('/api/agent-chat', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ agent: currentChatAgent, message: text, history, context }) });
                 const data = await resp.json();
                 hideTyping();
+                // Persist updated context (resolved ticker, company name) for next turn
+                if (data.context && Object.keys(data.context).length > 0) {
+                    _agentContexts[currentChatAgent] = data.context;
+                }
                 chatHistories[currentChatAgent].push({ role: 'agent', text: data.response || 'No response.' });
             } catch(e) { hideTyping(); chatHistories[currentChatAgent].push({ role: 'agent', text: 'Connection error.' }); }
         }
