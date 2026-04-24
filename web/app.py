@@ -2132,7 +2132,8 @@ def api_agent_chat():
     Uses LLM (OpenAI-compatible API) when available, falls back to keyword matching.
     Accepts {"agent": "CN_data", "message": "top movers", "session_id": "...", "history": [...]}
     """
-    from web.agent_llm import agent_chat, _call_llm
+    from web.agent import agent_chat
+    from web.agent_llm import _call_llm
     from web.chat_history import init_db, load_history, save_turn, needs_compaction, save_summary
 
     init_db()
