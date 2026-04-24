@@ -178,18 +178,26 @@ def _load_signal_context(market, data_dir):
 
 
 def _latest_daily_parquet(base):
-    """Return one row per ticker (most recent date) with computed return signals.
+    """Return one row per ticker (most recent date with valid close) with computed return signals.
 
-    Reads the FULL multi-day parquet so pct_change() has historical context,
-    then keeps only the latest row per ticker. Computes return_1d/5d/20d and
-    volume_ratio on-the-fly if the pipeline didn't save them.
+    Reads the last 2 parquet files so a partial today-run (NaN close) doesn't
+    shadow yesterday's complete data. Keeps only the latest row per ticker
+    that has a valid close price.
     """
     import glob
     files = sorted(glob.glob(os.path.join(base, "market_daily_*.parquet")))
     if not files:
         return pd.DataFrame()
     try:
-        df = pd.read_parquet(files[-1])
+        frames = []
+        for f in files[-2:]:
+            try:
+                frames.append(pd.read_parquet(f))
+            except Exception:
+                pass
+        if not frames:
+            return pd.DataFrame()
+        df = pd.concat(frames, ignore_index=True)
         if df.empty:
             return df
 
@@ -206,6 +214,10 @@ def _latest_daily_parquet(base):
                 parts.append(g)
             df = pd.concat(parts, ignore_index=True)
 
+        # Prefer rows with valid close so today's NaN rows don't shadow yesterday's data
+        if "close" in df.columns and "date" in df.columns:
+            df_valid = df[df["close"].notna()].sort_values("date")
+            return df_valid.drop_duplicates("ticker", keep="last") if not df_valid.empty else _latest_per_ticker(df)
         return _latest_per_ticker(df)
     except Exception:
         return pd.DataFrame()
@@ -225,6 +237,12 @@ def _load_ticker_context(ticker: str, market: str, data_dir: str) -> str:
         row = snap[snap["ticker"] == ticker]
         if not row.empty:
             row = _merge_names(row, names)
+            # Format return columns as % strings so LLM doesn't misread decimals
+            row = row.copy()
+            for ret_col in ["return_1d", "return_5d", "return_20d"]:
+                if ret_col in row.columns:
+                    row[ret_col] = row[ret_col].apply(
+                        lambda v: f"{v*100:+.2f}%" if pd.notna(v) else None)
             cols = [c for c in ["ticker", "name", "close", "return_1d", "return_5d",
                                 "return_20d", "volume", "volume_ratio"] if c in row.columns]
             sections.append(f"PRICE DATA ({ticker}):\n" + _df_to_text(row[cols]))
@@ -268,6 +286,11 @@ def _load_ticker_context(ticker: str, market: str, data_dir: str) -> str:
                     peer_snap = snap[snap["ticker"].astype(str).isin(peer_tickers)].copy()
                     if not peer_snap.empty:
                         peer_snap = _merge_names(peer_snap, names)
+                        # Format returns as % strings (consistent with PRICE DATA block)
+                        for ret_col in ["return_1d", "return_20d"]:
+                            if ret_col in peer_snap.columns:
+                                peer_snap[ret_col] = peer_snap[ret_col].apply(
+                                    lambda v: f"{v*100:+.2f}%" if pd.notna(v) else None)
                         cols = [c for c in ["ticker", "name", "close", "return_1d",
                                             "return_20d", "market_cap"] if c in peer_snap.columns]
                         # Sort by market_cap desc, show top 10
@@ -660,7 +683,9 @@ Rules:
 - Only include fields relevant to the tool (e.g. skip url/query/ticker if not needed).
 - tickers: ONLY codes the user explicitly typed. Never infer from company names.
 - URL in message: fetch_url is always step 1. Other steps follow after.
-- Peer comparison (user asks about competitors, similar companies, industry peers): ALWAYS include peer_agent as a step — even if fetch_url or web_search are also present. peer_agent produces a full ranked report from local data; web_search adds revenue/profit/financials on top.
+- Peer comparison — two cases:
+  (a) User asks "find peers / competitors of stock X" (unknown peer list): use peer_agent with X as anchor — it discovers and ranks peers automatically.
+  (b) User names N specific stocks for direct comparison: use local_data (list each ticker in the ticker field) + web_search. Do NOT use peer_agent here — it is designed to discover unknown peers, not compare an explicit named list.
 - Always include a tool even if coverage is partial — partial data is better than nothing.
 - Max 4 steps."""
 
@@ -748,6 +773,14 @@ def _execute_plan(plan: dict, tickers: list, market, agent_type: str,
             ticker = step.get("ticker") or (tickers[0] if tickers else None)
             if is_global:
                 result = _load_global_context(data_dir)
+            elif tickers and len(tickers) > 1:
+                # Multiple tickers: load each and concatenate
+                parts = []
+                for t in tickers:
+                    ctx = _load_ticker_context(t, market, data_dir)
+                    if ctx and not ctx.startswith("("):
+                        parts.append(ctx)
+                result = "\n\n---\n\n".join(parts) if parts else _load_data_context(market, data_dir)
             elif ticker:
                 result = _load_ticker_context(ticker, market, data_dir)
             else:
@@ -994,6 +1027,8 @@ def _extract_financials(tool_results: dict, companies_hint: list,
         raw_parts.append(_clean_web_text(tool_results["fetch_url"])[:1500])
     if tool_results.get("web_search"):
         raw_parts.append(_clean_web_text(tool_results["web_search"])[:2500])
+    if tool_results.get("web_search_missing"):
+        raw_parts.append(_clean_web_text(tool_results["web_search_missing"])[:2000])
     if not raw_parts:
         return ""
 
@@ -1272,7 +1307,8 @@ Prefer live data (labeled "LIVE MARKET DATA") over local data when both are pres
 - If PEER AGENT data is in DATA: use its tables directly — do NOT restate or re-explain what is already in the table. Add only interpretation and the answer to the user's specific question.
 - Calibrate depth to the question: quick fact lookup → short; analysis/explanation → go deep, cover all angles.
 - Use local price data (return_1d, return_20d, market_cap, vol_ratio) even when revenue/profit is absent — price momentum is a valid proxy for relative strength.
-- Use headers and bullet points where they help clarity, not by default.""",
+- Use headers and bullet points where they help clarity, not by default.
+- RESPOND IN ENGLISH ONLY. All text — section headers, bullet points, table headers, labels, commentary — must be in English. Do not switch to Chinese even for Chinese company names or A-share tickers.""",
 
     "global": """You are a financial analyst covering global markets.
 
@@ -1286,7 +1322,8 @@ Data available: capital flows by market, macro indicators (rates, commodities, V
 - Web search results supplement local data — use both, cite the source when relevant.
 - If a Task is specified below, treat it as a required checklist — address every point in it.
 - Calibrate depth to the question: a simple lookup → concise; an analytical question → full depth, cover all mechanisms and evidence.
-- Use headers where they help, not by default.""",
+- Use headers where they help, not by default.
+- RESPOND IN ENGLISH ONLY. All text — section headers, bullet points, table headers, labels, commentary — must be in English. Do not switch to Chinese even for Chinese company names or A-share tickers.""",
 }
 
 
@@ -1584,6 +1621,7 @@ def agent_chat(agent_type, market, message, data_dir, chat_history=None,
     company_name = plan.get("company_name", "")
     response_focus = plan.get("response_focus", "")
     tools        = list(dict.fromkeys(s["tool"] for s in plan.get("steps", []) if s.get("tool") in TOOLS))
+    is_global    = agent_type == "global" or market in (None, "ALL")
 
     # Inherit ticker from previous turn when question uses pronouns
     if not tickers and not company_name and context.get("ticker"):
@@ -1628,6 +1666,30 @@ def agent_chat(agent_type, market, message, data_dir, chat_history=None,
         if resolved_ticker:
             tickers = [resolved_ticker]
 
+    # ── Multi-company resolution: for peer_comparison with named stocks ─────
+    # When the user lists N specific company names for direct comparison, the planner
+    # may leave tickers=[] and put individual tickers only in step fields.
+    # Collect all tickers referenced in plan steps and resolve any remaining names.
+    _unresolved_names = []  # company names mentioned by user but not found in local universe
+    if market and not is_global:
+        step_tickers = [s["ticker"] for s in plan.get("steps", []) if s.get("ticker")]
+        for t in step_tickers:
+            if t not in tickers:
+                tickers.append(t)
+        # Resolve company names from the message; track ones that fail resolution
+        import re as _re2
+        _cn_names = _re2.findall(r'[\u4e00-\u9fff]{2,8}', message)
+        _resolve_fn = _resolve_cn_name_to_ticker if market == "CN" else None
+        if _resolve_fn:
+            for name in _cn_names:
+                if len(name) >= 3:
+                    resolved = _resolve_fn(name, data_dir)
+                    if resolved and resolved not in tickers:
+                        tickers.append(resolved)
+                    elif not resolved:
+                        _unresolved_names.append(name)
+        tickers = list(dict.fromkeys(tickers))  # deduplicate, preserve order
+
     # Save resolved ticker into context for future turns
     if tickers:
         context = {
@@ -1640,6 +1702,19 @@ def agent_chat(agent_type, market, message, data_dir, chat_history=None,
     # Independent steps run in parallel; dependent steps run sequentially.
     # trading_agent and sector_agent are handled inside _execute_plan.
     tool_results = _execute_plan(plan, tickers, market, agent_type, data_dir, message)
+
+    if _unresolved_names and market == "CN":
+        # Resolve names → tickers first, then search by ticker code
+        _missing_parts = []
+        for _mname in _unresolved_names[:3]:
+            _tk = _resolve_cn_name_to_ticker(_mname, data_dir)
+            _q = _tk if _tk else _mname
+            _r = _web_search(_q, max_results=3, region="cn-zh")
+            if _r and "(web search failed" not in _r:
+                _missing_parts.append(_r)
+        if _missing_parts:
+            tool_results["web_search_missing"] = "\n\n".join(_missing_parts)
+            print(f"[missing-stocks] web_search for: {_unresolved_names}", flush=True)
 
     # ── Phase 2b-inject: Global agent always needs local context ─────────
     # The planner may not always include a local_data step (e.g. macro questions
@@ -1691,8 +1766,9 @@ def agent_chat(agent_type, market, message, data_dir, chat_history=None,
     _needs_extraction = (
         intent in ("peer_comparison",)
         or any(w in message for w in _EXTRACT_TRIGGERS)
+        or bool(tool_results.get("web_search_missing"))
     )
-    if _needs_extraction and (tool_results.get("web_search") or tool_results.get("fetch_url")):
+    if _needs_extraction and (tool_results.get("web_search") or tool_results.get("fetch_url") or tool_results.get("web_search_missing")):
         companies_hint = []
         if company_name:
             companies_hint.append(company_name)
@@ -1755,8 +1831,8 @@ def agent_chat(agent_type, market, message, data_dir, chat_history=None,
         _data_notes.append("SECTOR AGENT contains a complete sector analysis — use it as the primary source.")
     if tool_results.get("fetch_url"):
         _data_notes.append("The URL in the user's message has already been fetched — its content is in the DATA section below. Do not say you cannot access it.")
-    if tool_results.get("web_search"):
-        _data_notes.append("Web search has already been performed — results are in the DATA section below.")
+    if tool_results.get("web_search") or tool_results.get("web_search_missing") or tool_results.get("web_summary"):
+        _data_notes.append("Web search has already been performed — results are in the DATA section below. At the end of your response, add a brief '## News highlights' section (3–5 bullet points) summarizing the most relevant recent news or announcements from the web search results. Skip this section only if the web content is entirely off-topic.")
     if "cn_peer_financials" in tool_results and "web_summary" in tool_results:
         _data_notes.append("CN PEER FINANCIALS has structured annual data. EXTRACTED FINANCIALS may contain more recent figures — use both.")
     if "cn_peer_financials" in tool_results:

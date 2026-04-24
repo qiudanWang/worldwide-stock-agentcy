@@ -821,7 +821,8 @@
             try {
                 const history = (chatHistories[currentChatAgent] || []).slice(-10).map(m => ({ role: m.role, content: m.text }));
                 const context = _agentContexts[currentChatAgent] || {};
-                const resp = await fetch('/api/agent-chat', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ agent: currentChatAgent, message: text, history, context }) });
+                const session_id = _getActiveConv(currentChatAgent)?.id || '';
+                const resp = await fetch('/api/agent-chat', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ agent: currentChatAgent, message: text, history, context, session_id }) });
                 const data = await resp.json();
                 hideTyping();
                 // Persist updated context (resolved ticker, company name) for next turn

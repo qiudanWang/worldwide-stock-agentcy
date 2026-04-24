@@ -2130,14 +2130,17 @@ def api_agent_chat():
     """Chat endpoint for pixel agent conversations.
 
     Uses LLM (OpenAI-compatible API) when available, falls back to keyword matching.
-    Accepts {"agent": "CN_data", "message": "top movers", "history": [...]}
+    Accepts {"agent": "CN_data", "message": "top movers", "session_id": "...", "history": [...]}
     """
-    from web.agent_llm import agent_chat
+    from web.agent_llm import agent_chat, _call_llm
+    from web.chat_history import init_db, load_history, save_turn, needs_compaction, save_summary
+
+    init_db()
 
     body = request.get_json(force=True)
     agent_name = body.get("agent", "")
     message = (body.get("message", "") or "").strip()
-    history = body.get("history", [])
+    session_id = body.get("session_id", "")
     language = body.get("language", "English")
     context = body.get("context", {})  # carries resolved ticker across turns
 
@@ -2155,6 +2158,12 @@ def api_agent_chat():
         else:
             return jsonify({"response": "Unknown agent format."}), 400
 
+    # Load history from SQLite if session_id provided, else fall back to frontend-passed history
+    if session_id:
+        history = load_history(session_id)
+    else:
+        history = body.get("history", [])
+
     # Try LLM-backed response first
     try:
         project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -2167,6 +2176,25 @@ def api_agent_chat():
         else:
             llm_response, new_context = result, context
         if llm_response:
+            if session_id:
+                save_turn(session_id, message, llm_response)
+                if needs_compaction(session_id):
+                    try:
+                        old_msgs = load_history(session_id)
+                        turns_text = "\n".join(
+                            f"{m['role'].upper()}: {m['content']}" for m in old_msgs[:-12]
+                        )
+                        summary = _call_llm(
+                            "You are a helpful assistant. Summarize the following conversation concisely, "
+                            "preserving key facts, tickers, and decisions discussed.",
+                            [],
+                            turns_text,
+                            max_tokens=400,
+                        )
+                        if summary:
+                            save_summary(session_id, summary)
+                    except Exception as _e:
+                        app.logger.warning(f"Compaction failed: {_e}")
             return jsonify({"response": llm_response, "context": new_context})
     except Exception as e:
         app.logger.warning(f"LLM chat failed: {e}")

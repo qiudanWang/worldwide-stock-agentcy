@@ -275,8 +275,8 @@ def _load_local_peers(ticker: str, market: str, data_dir: str) -> str:
     price_rows = []
 
     # Financials table (only built if we have fin data)
-    fin_header = "| Ticker | Name | Ann Period | Ann Rev (亿) | Ann NP (亿) | Latest Qtr | Qtr Rev (亿) | Qtr NP (亿) |"
-    fin_sep    = "|--------|------|------------|-------------|------------|------------|-------------|------------|"
+    fin_header = "| Ticker | Name | Period | Rev (亿) | NP (亿) | Net Margin | ROE | PE |"
+    fin_sep    = "|--------|------|--------|----------|---------|------------|-----|-----|"
     fin_rows = []
 
     def _fmt_pct(v):
@@ -306,20 +306,25 @@ def _load_local_peers(ticker: str, market: str, data_dir: str) -> str:
         # Collect financials row with sort key (fiscal_year) for grouping later
         if has_fin_cols:
             ann = (fin or {}).get("annual") or {}
-            qtr = (fin or {}).get("quarter") or {}
             fy       = ann.get("fiscal_year")
             fy_label = str(fy) if fy else "—"
             ann_rev  = _fmt_val(ann.get("revenue"))
             ann_np   = _fmt_val(ann.get("net_profit"), 2)
-            ann_note = ""
-            if ann.get("revenue_yoy") is not None:
-                ann_note = f"({_fmt_pct(ann.get('revenue_yoy'))})"
-            qend     = str(qtr.get("period_end", ""))[:7] if qtr else "—"
-            qtr_rev  = _fmt_val(qtr.get("revenue"))
-            qtr_np   = _fmt_val(qtr.get("net_profit"), 2)
+            rev_yoy  = f" ({_fmt_pct(ann.get('revenue_yoy'))})" if ann.get("revenue_yoy") is not None else ""
+            margin   = f"{ann.get('net_margin'):.1f}%" if ann.get("net_margin") is not None else "—"
+            roe      = f"{ann.get('roe'):.1f}%" if ann.get("roe") is not None else "—"
+            # PE = close / eps (trailing, from annual EPS)
+            pe = "—"
+            eps = ann.get("eps")
+            close_raw = snap.get("close") if snap is not None else None
+            if eps and close_raw and float(eps) > 0:
+                try:
+                    pe = f"{float(close_raw) / float(eps):.1f}x"
+                except Exception:
+                    pass
             fin_rows.append((
                 fy or 0,  # sort key
-                f"| {pticker} | {pname} | FY{fy_label} | {ann_rev} {ann_note} | {ann_np} | {qend} | {qtr_rev} | {qtr_np} |"
+                f"| {pticker} | {pname} | FY{fy_label} | {ann_rev}{rev_yoy} | {ann_np} | {margin} | {roe} | {pe} |"
             ))
 
     price_table = "\n".join([price_header, price_sep] + price_rows)
