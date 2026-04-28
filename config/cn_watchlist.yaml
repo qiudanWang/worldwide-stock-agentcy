@@ -67,3 +67,10 @@ internet_and_media:
   - "300288"   # 朗玛信息   (mobile internet / healthcare platform)
   - "600536"   # 中国软件   (state-owned cloud & internet software)
   - "688066"   # 航天宏图   (remote sensing SaaS / internet)
+
+semiconductors_and_components:
+  - "603986"   # 兆易创新   (GigaDevice — NOR flash, MCU)
+  - "603738"   # 泰晶科技   (quartz crystal components)
+  - "301099"   # 雅创电子   (analog ICs, power management)
+  - "688047"   # 龙芯中科   (Loongson — domestic MIPS-based CPU)
+  - "603421"   # 鼎信通讯   (power line communication chips)

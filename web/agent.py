@@ -27,8 +27,8 @@ Rules:
 - ALWAYS use tools to get data before answering. Never invent prices, returns, or financial figures.
 - RESPOND IN ENGLISH ONLY. All text — section headers, bullet points, table headers, labels — must be in English.
 - Format numbers consistently: prices to 2 decimal places, returns as percentages (+4.85%), large figures with units (B/M/億).
-- If a tool returns no data, say so clearly rather than guessing.
-- For peer comparisons involving multiple stocks, call get_stock_data for each ticker.
+- For peer comparisons or multi-stock queries, call get_stock_data for EACH ticker separately.
+- If get_stock_data returns no data for a CN ticker, IMMEDIATELY call web_search using the 6-digit ticker code as the query (e.g. "603986") with language="zh". Do NOT ask the user for permission — just search automatically.
 - After responses that include web_search results, add a brief "## News Highlights" section (3–5 bullets).
 - Be concise. Lead with the key finding, then supporting data in a table or bullets.
 """
