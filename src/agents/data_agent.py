@@ -8,10 +8,12 @@ from src.agents.base import BaseAgent, AgentResult
 from src.common.config import get_data_path, load_yaml, get_settings
 from src.common.logger import get_logger
 from src.common.rate_limiter import yf_limiter
+from src.common.tracing import observe
 
 log = get_logger("agent.data")
 
 
+@observe(name="_enrich_subsector_cn", type="tool")
 def _enrich_subsector_cn(df: pd.DataFrame) -> pd.DataFrame:
     """Add subsector (申万 Level-2 industry) for CN A-share universe."""
     try:
@@ -47,11 +49,13 @@ def _enrich_subsector_cn(df: pd.DataFrame) -> pd.DataFrame:
 class DataAgent(BaseAgent):
     """Fetches universe, OHLCV, market cap, and indices for a single market."""
 
+    @observe(name="DataAgent.__init__", type="span")
     def __init__(self, name, market, market_config, depends_on=None):
         super().__init__(name, agent_type="data", market=market,
                          depends_on=depends_on)
         self.market_config = market_config
 
+    @observe(name="DataAgent.should_run", type="span")
     def should_run(self):
         """Skip if today's market data snapshot already exists."""
         today = datetime.now().strftime("%Y%m%d")
@@ -62,6 +66,7 @@ class DataAgent(BaseAgent):
             return False
         return True
 
+    @observe(name="DataAgent.run", type="agent")
     def run(self) -> AgentResult:
         today = datetime.now().strftime("%Y%m%d")
         total_records = 0
@@ -167,6 +172,7 @@ class DataAgent(BaseAgent):
             errors=errors,
         )
 
+    @observe(name="DataAgent._build_universe", type="tool")
     def _build_universe(self):
         """Build or load the universe for this market."""
         source = self.market_config.get("universe_source", "watchlist")
@@ -314,6 +320,7 @@ class DataAgent(BaseAgent):
 
         return df
 
+    @observe(name="DataAgent._fetch_market_data", type="tool")
     def _fetch_market_data(self, tickers, yf_symbols):
         """Fetch OHLCV data for all tickers in this market."""
         source = self.market_config.get("source", "yfinance")
@@ -327,6 +334,7 @@ class DataAgent(BaseAgent):
             from src.market_data.yf_market_data import fetch_yf_batch
             return fetch_yf_batch(tickers, market=market, ticker_suffix=suffix)
 
+    @observe(name="DataAgent._fetch_market_cap", type="tool")
     def _fetch_market_cap(self, tickers, yf_symbols):
         """Fetch market cap data for this market."""
         # Check cache freshness — also invalidate if coverage is < 50% of current universe
@@ -359,6 +367,7 @@ class DataAgent(BaseAgent):
             return df
         else:
             # Use yfinance fast_info in parallel batches with per-call timeout
+            import time
             import yfinance as yf
             from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeout
             suffix = self.market_config.get("ticker_suffix", "")
@@ -370,9 +379,15 @@ class DataAgent(BaseAgent):
                 symbol = f"{ticker}{suffix}" if suffix else ticker
                 try:
                     with yf_limiter:
-                        fi = yf.Ticker(symbol).fast_info
-                        cap = getattr(fi, "market_cap", None)
+                        try:
+                            fi = yf.Ticker(symbol).fast_info
+                            cap = getattr(fi, "market_cap", None)
+                        except KeyError:
+                            cap = None
                     return ticker, cap
+                except yf.exceptions.YFRateLimitError:
+                    time.sleep(5)
+                    return ticker, None
                 except Exception:
                     return ticker, None
 
@@ -395,6 +410,7 @@ class DataAgent(BaseAgent):
             df = pd.DataFrame(rows)
             return df
 
+    @observe(name="DataAgent._fetch_indices", type="tool")
     def _fetch_indices(self):
         """Fetch index data for this market."""
         import yfinance as yf
@@ -431,6 +447,7 @@ class DataAgent(BaseAgent):
             return pd.DataFrame()
         return pd.concat(results, ignore_index=True)
 
+    @observe(name="DataAgent._fetch_cn_indices_akshare", type="tool")
     def _fetch_cn_indices_akshare(self, indices_cfg):
         """Fetch CN index history via akshare (reliable full history for .SS/.SZ indices)."""
         import akshare as ak

@@ -4,10 +4,12 @@ import akshare as ak
 import yfinance as yf
 import pandas as pd
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("market.cap")
 
 
+@observe(name="fetch_cn_market_cap_batch", type="tool")
 def fetch_cn_market_cap_batch(tickers):
     """Fetch market cap for A-share stocks via individual stock info.
 
@@ -35,6 +37,7 @@ def fetch_cn_market_cap_batch(tickers):
     return result
 
 
+@observe(name="fetch_cn_market_cap_spot", type="tool")
 def fetch_cn_market_cap_spot():
     """Fetch market cap for all A-share stocks via spot data (fast but unreliable).
 
@@ -54,6 +57,7 @@ def fetch_cn_market_cap_spot():
         return pd.DataFrame(columns=["ticker", "market_cap"])
 
 
+@observe(name="fetch_cn_market_cap_yf", type="tool")
 def fetch_cn_market_cap_yf(tickers):
     """Fetch CN A-share market cap via yfinance as fallback.
 
@@ -68,8 +72,14 @@ def fetch_cn_market_cap_yf(tickers):
         cap = None
         try:
             with yf_limiter:
-                fi = yf.Ticker(symbol).fast_info
-                cap = getattr(fi, "market_cap", None)
+                try:
+                    fi = yf.Ticker(symbol).fast_info
+                    cap = getattr(fi, "market_cap", None)
+                except KeyError:
+                    cap = None
+        except yf.exceptions.YFRateLimitError:
+            import time
+            time.sleep(5)
         except Exception:
             pass
         rows.append({"ticker": ticker, "market_cap": cap})
@@ -80,6 +90,7 @@ def fetch_cn_market_cap_yf(tickers):
     return result
 
 
+@observe(name="fetch_us_market_cap", type="tool")
 def fetch_us_market_cap(tickers):
     """Fetch market cap for US stocks via yfinance.
 
@@ -101,6 +112,7 @@ def fetch_us_market_cap(tickers):
     return df
 
 
+@observe(name="fetch_all_market_caps", type="tool")
 def fetch_all_market_caps(us_tickers, cn_tickers=None):
     """Fetch market caps for both CN and US stocks.
 
@@ -117,6 +129,7 @@ def fetch_all_market_caps(us_tickers, cn_tickers=None):
     return pd.concat([cn, us], ignore_index=True)
 
 
+@observe(name="save_market_caps", type="tool")
 def save_market_caps(cap_df):
     """Save market cap data to a cached parquet file."""
     from src.common.config import get_data_path
@@ -127,6 +140,7 @@ def save_market_caps(cap_df):
     log.info(f"Saved market cap for {len(cap_df)} stocks to {path}")
 
 
+@observe(name="load_market_caps", type="tool")
 def load_market_caps():
     """Load cached market cap data from all markets. Returns dict of ticker -> market_cap."""
     import glob
@@ -155,6 +169,7 @@ CURRENCY_SYMBOLS = {
 }
 
 
+@observe(name="format_market_cap", type="tool")
 def format_market_cap(value, market="CN"):
     """Format market cap for display.
 

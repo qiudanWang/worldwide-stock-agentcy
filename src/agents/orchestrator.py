@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.common.config import load_yaml
 from src.common.logger import get_logger
 from src.agents.base import AgentResult, update_pipeline_status
+from src.common.tracing import observe
 
 log = get_logger("orchestrator")
 
@@ -22,6 +23,7 @@ class Orchestrator:
         """Register an agent."""
         self.agents[agent.name] = agent
 
+    @observe(name="Orchestrator.load_all_agents", type="agent")
     def load_all_agents(self):
         """Load all 40 agents (13 markets x 3 + 1 global)."""
         from src.agents.data_agent import DataAgent
@@ -69,6 +71,7 @@ class Orchestrator:
 
         log.info(f"Loaded {len(self.agents)} agents")
 
+    @observe(name="Orchestrator._get_execution_tiers", type="span")
     def _get_execution_tiers(self, agent_names=None):
         """Topological sort agents into parallel execution tiers."""
         if agent_names is None:
@@ -100,10 +103,12 @@ class Orchestrator:
         for agent in self.agents.values():
             agent.force = force
 
+    @observe(name="Orchestrator.run_all", type="agent")
     def run_all(self, max_workers=6):
         """Run all agents in dependency order."""
         return self._run_agents(list(self.agents.keys()), max_workers)
 
+    @observe(name="Orchestrator.run_agent", type="agent")
     def run_agent(self, name: str):
         """Run a single agent (ignoring dependencies)."""
         if name not in self.agents:
@@ -125,6 +130,7 @@ class Orchestrator:
         )
         return {name: result}
 
+    @observe(name="Orchestrator.run_market", type="agent")
     def run_market(self, market: str, max_workers=3):
         """Run all agents for a specific market."""
         names = [n for n, a in self.agents.items()
@@ -133,12 +139,14 @@ class Orchestrator:
         names = [n for n in names if n != "global"]
         return self._run_agents(names, max_workers)
 
+    @observe(name="Orchestrator.run_agent_type", type="agent")
     def run_agent_type(self, agent_type: str, max_workers=6):
         """Run all agents of a given type (e.g., 'data', 'news', 'signal')."""
         names = [n for n, a in self.agents.items()
                  if a.agent_type == agent_type]
         return self._run_agents(names, max_workers)
 
+    @observe(name="Orchestrator._run_agents", type="agent")
     def _run_agents(self, agent_names, max_workers=6):
         """Execute a set of agents respecting dependencies."""
         tiers = self._get_execution_tiers(agent_names)

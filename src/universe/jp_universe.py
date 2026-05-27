@@ -4,6 +4,7 @@ import requests
 import pandas as pd
 from src.common.config import get_data_path
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("universe.jp")
 
@@ -145,11 +146,19 @@ _KNOWN_JP_TECH = {
 _JPX_DATA_URL = "https://www.jpx.co.jp/english/listing/stocks/dlsearch/data/data_e.csv"
 
 
+@observe(name="_fetch_jpx_listings", type="tool")
 def _fetch_jpx_listings() -> pd.DataFrame:
     """Try to fetch the full JPX listed companies CSV."""
     log.info("Fetching JPX listed companies CSV...")
-    resp = requests.get(_JPX_DATA_URL, headers=HEADERS, timeout=30)
-    resp.raise_for_status()
+    try:
+        resp = requests.get(_JPX_DATA_URL, headers=HEADERS, timeout=30)
+        resp.raise_for_status()
+    except requests.HTTPError as e:
+        log.warning(f"JPX CSV unavailable ({e}). Falling back to known-stocks baseline.")
+        return pd.DataFrame()
+    except Exception as e:
+        log.warning(f"JPX CSV fetch failed ({e}). Falling back to known-stocks baseline.")
+        return pd.DataFrame()
 
     # JPX CSV is Shift-JIS or UTF-8 encoded
     from io import StringIO
@@ -165,6 +174,7 @@ def _fetch_jpx_listings() -> pd.DataFrame:
     return pd.DataFrame()
 
 
+@observe(name="_matches_tech_sector", type="tool")
 def _matches_tech_sector(sector_str: str) -> bool:
     """Check if a sector string matches tech criteria."""
     if not sector_str:
@@ -179,6 +189,7 @@ def _matches_tech_sector(sector_str: str) -> bool:
     return False
 
 
+@observe(name="build_jp_tech_universe", type="tool")
 def build_jp_tech_universe() -> pd.DataFrame:
     """Fetch JP tech stocks dynamically from JPX data.
 
@@ -285,6 +296,7 @@ def build_jp_tech_universe() -> pd.DataFrame:
     return result
 
 
+@observe(name="_fallback_watchlist", type="tool")
 def _fallback_watchlist() -> pd.DataFrame:
     """Load the static YAML watchlist as fallback."""
     from src.universe.yf_universe import build_yf_universe

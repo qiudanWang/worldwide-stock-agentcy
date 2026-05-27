@@ -31,10 +31,13 @@ class RateLimiter:
         self._sem.acquire()
         with self._lock:
             now = time.time()
-            wait = self._min_interval - (now - self._last_call)
-            if wait > 0:
-                time.sleep(wait)
-            self._last_call = time.time()
+            elapsed = now - self._last_call
+            wait = max(0.0, self._min_interval - elapsed)
+            # Reserve the slot atomically so other threads see the updated timestamp,
+            # then sleep outside the lock so concurrent threads can proceed in parallel.
+            self._last_call = now + wait
+        if wait > 0:
+            time.sleep(wait)
         return self
 
     def __exit__(self, *args):

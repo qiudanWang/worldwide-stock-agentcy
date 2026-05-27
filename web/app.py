@@ -26,6 +26,12 @@ from src.market_data.indices import fetch_indices
 from src.analysis.sector_performance import normalize_sector_df, meta_sector_heatmap, _SECTOR_MAP
 from src.news.world_monitor import FEEDS as GEO_FEEDS
 from src.macro.polymarket import fetch_polymarket_signals
+from src.common.tracing import observe
+try:
+    from traceroot import using_attributes
+except ImportError:
+    from contextlib import nullcontext
+    def using_attributes(**kwargs): return nullcontext()
 
 app = Flask(__name__)
 app.jinja_env.globals["format_market_cap"] = format_market_cap
@@ -33,6 +39,7 @@ app.jinja_env.globals["format_market_cap"] = format_market_cap
 # Canonical market display order used everywhere
 _MARKET_ORDER = ["CN", "US", "HK", "JP", "IN", "UK", "DE", "FR", "KR", "TW", "AU", "BR", "SA"]
 
+@observe(name="_market_sort_key", type="span")
 def _market_sort_key(m):
     try:
         return _MARKET_ORDER.index(m)
@@ -61,10 +68,12 @@ def _load_translations():
 _load_translations()
 
 
+@observe(name="_get_lang", type="span")
 def _get_lang() -> str:
     return "en"  # Page UI is always English; language selector is in chatbox only
 
 
+@observe(name="_make_t", type="span")
 def _make_t(lang: str):
     strings = _TRANSLATIONS.get(lang, {})
     en_strings = _TRANSLATIONS.get("en", {})
@@ -113,6 +122,7 @@ def inject_i18n():
 
 
 @app.route("/set-lang/<lang>")
+@observe(name="set_lang", type="span")
 def set_lang(lang: str):
     if lang not in _SUPPORTED_LANGS:
         lang = "en"
@@ -123,6 +133,7 @@ def set_lang(lang: str):
 
 
 
+@observe(name="load_cached_indices", type="tool")
 def load_cached_indices():
     """Load indices from saved parquet files — fast, no live API calls.
 
@@ -160,6 +171,7 @@ def load_cached_indices():
 # Simple in-memory cache for polymarket (10-minute TTL)
 _polymarket_cache = {"data": [], "ts": 0}
 
+@observe(name="_get_polymarket_signals", type="tool")
 def _get_polymarket_signals():
     if time.time() - _polymarket_cache["ts"] < 600:
         return _polymarket_cache["data"]
@@ -172,6 +184,7 @@ def _get_polymarket_signals():
     return data
 
 
+@observe(name="load_parquet", type="tool")
 def load_parquet(path):
     """Load a parquet file, return empty DataFrame if not found."""
     try:
@@ -189,6 +202,7 @@ def load_json(path):
         return {}
 
 
+@observe(name="_sparkline", type="span")
 def _sparkline(prices):
     """Convert a list of prices to an SVG polyline points string (80x24 viewBox)."""
     if not prices or len(prices) < 2:
@@ -203,6 +217,7 @@ def _sparkline(prices):
     return " ".join(pts)
 
 
+@observe(name="_combined_histbars", type="span")
 def _combined_histbars(gdp_values, gdp_years, cpi_values, cpi_years, W=80, H=24):
     """Return SVG rect dicts for a combined GDP+CPI histogram (80×24 viewBox).
 
@@ -286,6 +301,7 @@ _FX_META = {
 }
 
 
+@observe(name="build_fx_table", type="span")
 def build_fx_table(macro_df, macro_latest, n_points=30):
     """Build FX table rows with 30d sparklines for the macro page."""
     rows = []
@@ -319,6 +335,7 @@ def build_fx_table(macro_df, macro_latest, n_points=30):
     return rows
 
 
+@observe(name="build_macro_sparklines", type="span")
 def build_macro_sparklines(macro_latest, macro_df, n_points=30):
     """Enrich macro_latest dict with sparkline SVG path and range data."""
     if macro_df.empty or not macro_latest:
@@ -427,6 +444,7 @@ _MARKET_INDEX_SYMBOL = {
 }
 
 
+@observe(name="_get_stock_1y_return", type="tool")
 def _get_stock_1y_return(market_code):
     """Compute 1Y return for the primary index of a market.
 
@@ -476,6 +494,7 @@ def _get_stock_1y_return(market_code):
         return None
 
 
+@observe(name="_build_detail_charts", type="span")
 def _build_detail_charts(country, macro_df, gdp, cpi, unemp, ca,
                           policy_ind, yield_ind, yield2y_ind):
     """Build list of chart dicts for expanded country detail row."""
@@ -606,6 +625,7 @@ def _build_detail_charts(country, macro_df, gdp, cpi, unemp, ca,
     return charts
 
 
+@observe(name="build_country_table", type="span")
 def build_country_table(macro_df):
     """Build combined country economic table with one row per country.
 
@@ -806,10 +826,12 @@ def build_country_table(macro_df):
 
 
 # Keep old name as alias for backward compatibility
+@observe(name="build_gdp_cpi_table", type="span")
 def build_gdp_cpi_table(macro_df):
     return build_country_table(macro_df)
 
 
+@observe(name="build_capital_flow_cards", type="tool")
 def build_capital_flow_cards(markets_cfg):
     """Load capital flow data for all markets and build sparkline cards."""
     cards = {}
@@ -877,6 +899,7 @@ def get_markets_config():
         return {}
 
 
+@observe(name="get_latest_snapshot", type="tool")
 def get_latest_snapshot(market=None):
     """Find the most recent market snapshot file.
 
@@ -896,6 +919,7 @@ def get_latest_snapshot(market=None):
     return None
 
 
+@observe(name="_enrich_snapshot", type="span")
 def _enrich_snapshot(df):
     """Recompute return_1d/5d/20d and volume_ratio from close history.
 
@@ -920,6 +944,7 @@ def _enrich_snapshot(df):
     return df
 
 
+@observe(name="get_all_market_snapshots", type="tool")
 def get_all_market_snapshots():
     """Load snapshots from all markets, merging recent files so a partial
     today-run doesn't lose tickers that were fetched yesterday."""
@@ -964,6 +989,7 @@ def get_all_market_snapshots():
     return pd.DataFrame()
 
 
+@observe(name="get_latest_alerts", type="tool")
 def get_latest_alerts():
     """Load alerts from global alerts or legacy location."""
     # Try new location first
@@ -979,6 +1005,7 @@ def get_latest_alerts():
     return []
 
 
+@observe(name="get_master_universe", type="tool")
 def get_master_universe():
     """Load master universe from new or legacy location."""
     path = get_data_path("global", "universe_master.parquet")
@@ -987,6 +1014,7 @@ def get_master_universe():
     return load_parquet(get_data_path("processed", "tech_universe_master.parquet"))
 
 
+@observe(name="_get_yf_symbol", type="span")
 def _get_yf_symbol(ticker, market, universe_df=None):
     """Resolve the yfinance symbol for a ticker.
 
@@ -1018,6 +1046,7 @@ def _get_yf_symbol(ticker, market, universe_df=None):
     return ticker
 
 
+@observe(name="_format_employees", type="span")
 def _format_employees(count):
     """Format employee count with comma separators."""
     if not count:
@@ -1028,6 +1057,7 @@ def _format_employees(count):
         return None
 
 
+@observe(name="_format_yf_market_cap", type="span")
 def _format_yf_market_cap(value):
     """Format market cap from yfinance (in raw number) to readable string."""
     if not value:
@@ -1049,6 +1079,7 @@ def _format_yf_market_cap(value):
 CACHE_MAX_AGE_SECONDS = 7 * 24 * 3600  # 7 days
 
 
+@observe(name="fetch_company_info", type="tool")
 def fetch_company_info(ticker, market, universe_df=None):
     """Fetch company info from yfinance with file-based caching.
 
@@ -1099,6 +1130,7 @@ def fetch_company_info(ticker, market, universe_df=None):
 # ── Routes ──────────────────────────────────────────────────────────────
 
 @app.route("/")
+@observe(name="index", type="span")
 def index():
     markets_cfg = get_markets_config()
     market_codes = list(markets_cfg.keys())
@@ -1307,6 +1339,7 @@ def index():
 
 
 @app.route("/peers")
+@observe(name="peers_page", type="span")
 def peers_page():
     # Load global peer groups
     peer_groups = load_json(get_data_path("global", "peer_groups.json"))
@@ -1345,6 +1378,7 @@ def peers_page():
 
 @app.route("/market")
 @app.route("/market/<market_code>")
+@observe(name="market_page", type="span")
 def market_page(market_code=None):
     markets_cfg = get_markets_config()
     market_codes = list(markets_cfg.keys())
@@ -1557,6 +1591,7 @@ def market_page(market_code=None):
 
 
 @app.route("/news")
+@observe(name="news_page", type="span")
 def news_page():
     markets_cfg = get_markets_config()
 
@@ -1602,12 +1637,14 @@ def news_page():
 
 
 @app.route("/companies")
+@observe(name="companies_page", type="span")
 def companies_page():
     """Redirect old companies page to unified market page."""
     return redirect(url_for("market_page"))
 
 
 @app.route("/companies/<ticker>")
+@observe(name="company_detail", type="span")
 def company_detail(ticker):
     universe = get_master_universe()
     name_lookup = load_name_lookup()
@@ -1727,6 +1764,7 @@ def company_detail(ticker):
 
 
 @app.route("/macro")
+@observe(name="macro_page", type="span")
 def macro_page():
     macro_df = load_parquet(get_data_path("global", "macro_indicators.parquet"))
 
@@ -1811,6 +1849,7 @@ def macro_page():
 
 
 @app.route("/sectors")
+@observe(name="sectors_page", type="span")
 def sectors_page():
     sector_perf = normalize_sector_df(load_parquet(get_data_path("global", "sector_performance.parquet")))
     if not sector_perf.empty:
@@ -1827,6 +1866,7 @@ def sectors_page():
 
 
 @app.route("/alerts")
+@observe(name="alerts_page", type="span")
 def alerts_page():
     all_alerts = enrich_alerts(get_latest_alerts())
     markets_cfg = get_markets_config()
@@ -1849,6 +1889,7 @@ def alerts_page():
 
 
 @app.route("/agents")
+@observe(name="agents_page", type="span")
 def agents_page():
     markets_cfg = get_markets_config()
     return render_template(
@@ -1859,6 +1900,7 @@ def agents_page():
 
 
 @app.route("/status")
+@observe(name="status_page", type="span")
 def status_page():
     status = load_json(get_data_path("agent_status.json"))
     return render_template("status.html", status=status)
@@ -1949,6 +1991,7 @@ def api_agent_status():
     return jsonify(status)
 
 
+@observe(name="_pid_is_alive", type="span")
 def _pid_is_alive(pid):
     """Return True if a process with this PID is still running."""
     try:
@@ -1958,6 +2001,7 @@ def _pid_is_alive(pid):
         return False
 
 
+@observe(name="_clear_pipeline_status", type="span")
 def _clear_pipeline_status():
     """Force the status file pipeline state to idle."""
     status = load_json(get_data_path("agent_status.json")) or {}
@@ -1976,6 +2020,7 @@ def _clear_pipeline_status():
 
 
 @app.route("/api/run-pipeline", methods=["POST"])
+@observe(name="api_run_pipeline", type="span")
 def api_run_pipeline():
     """Start the pipeline by running ./run.sh in a background subprocess."""
     import subprocess
@@ -2025,6 +2070,7 @@ def api_run_pipeline():
 
 
 @app.route("/api/stop-pipeline", methods=["POST"])
+@observe(name="api_stop_pipeline", type="span")
 def api_stop_pipeline():
     """Kill the running pipeline process group."""
     import signal as _signal
@@ -2042,6 +2088,7 @@ def api_stop_pipeline():
 
 
 @app.route("/api/indices")
+@observe(name="api_indices", type="span")
 def api_indices():
     """JSON API for market indices."""
     market = request.args.get("market")
@@ -2050,12 +2097,14 @@ def api_indices():
 
 
 @app.route("/api/macro-latest")
+@observe(name="api_macro_latest", type="span")
 def api_macro_latest():
     """JSON API for latest macro indicators."""
     return jsonify(load_json(get_data_path("global", "macro_latest.json")))
 
 
 @app.route("/api/deep-analysis", methods=["POST"])
+@observe(name="api_deep_analysis", type="span")
 def api_deep_analysis():
     """Run TradingAgents multi-agent analysis on a ticker.
 
@@ -2085,6 +2134,7 @@ def api_deep_analysis():
 
 _LLM_CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "llm_config.json")
 
+@observe(name="_load_llm_config", type="span")
 def _load_llm_config():
     try:
         with open(_LLM_CONFIG_PATH) as f:
@@ -2092,12 +2142,14 @@ def _load_llm_config():
     except Exception:
         return {"api_key": "", "base_url": "https://api.openai.com/v1", "model": "gpt-4o-mini"}
 
+@observe(name="_save_llm_config", type="span")
 def _save_llm_config(cfg):
     os.makedirs(os.path.dirname(_LLM_CONFIG_PATH), exist_ok=True)
     with open(_LLM_CONFIG_PATH, "w") as f:
         json.dump(cfg, f, indent=2)
 
 @app.route("/api/llm-config", methods=["GET"])
+@observe(name="api_llm_config_get", type="span")
 def api_llm_config_get():
     cfg = _load_llm_config()
     # Mask key for display
@@ -2106,6 +2158,7 @@ def api_llm_config_get():
     return jsonify({"api_key_masked": masked, "base_url": cfg.get("base_url", ""), "model": cfg.get("model", "")})
 
 @app.route("/api/llm-config", methods=["POST"])
+@observe(name="api_llm_config_save", type="span")
 def api_llm_config_save():
     body = request.get_json(force=True)
     cfg = _load_llm_config()
@@ -2126,6 +2179,7 @@ def api_llm_config_save():
 
 
 @app.route("/api/agent-chat", methods=["POST"])
+@observe(name="api_agent_chat", type="span")
 def api_agent_chat():
     """Chat endpoint for pixel agent conversations.
 
@@ -2169,8 +2223,9 @@ def api_agent_chat():
     try:
         project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         data_dir = os.path.join(project_dir, "data")
-        result = agent_chat(agent_type, market, message, data_dir, history,
-                            language=language, context=context)
+        with using_attributes(session_id=session_id) if session_id else using_attributes():
+            result = agent_chat(agent_type, market, message, data_dir, history,
+                                language=language, context=context)
         # agent_chat returns (response, context) tuple
         if isinstance(result, tuple):
             llm_response, new_context = result
@@ -2209,36 +2264,8 @@ def api_agent_chat():
     return jsonify({"response": response or "Sorry, no data available for this query."})
 
 
-# ---------------------------------------------------------------------------
-# Watchlist / Price-watch API
-# ---------------------------------------------------------------------------
-
-_WATCHLIST_PATH = None
-
-def _get_watchlist_path():
-    global _WATCHLIST_PATH
-    if _WATCHLIST_PATH is None:
-        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        _WATCHLIST_PATH = os.path.join(project_dir, "data", "watchlist.json")
-    return _WATCHLIST_PATH
-
-
-def _load_watchlist():
-    path = _get_watchlist_path()
-    if os.path.exists(path):
-        with open(path) as f:
-            return json.load(f)
-    return []
-
-
-def _save_watchlist(items):
-    path = _get_watchlist_path()
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(items, f, indent=2)
-
-
 @app.route("/api/top-movers")
+@observe(name="api_top_movers", type="span")
 def api_top_movers():
     """Return top gainers and losers for a market (or all markets)."""
     market = request.args.get("market", "").upper()
@@ -2303,97 +2330,9 @@ def api_top_movers():
     return jsonify({"gainers": gainers[:n], "losers": losers[:n]})
 
 
-@app.route("/api/watchlist", methods=["GET"])
-def api_watchlist_get():
-    return jsonify(_load_watchlist())
-
-
-@app.route("/api/watchlist", methods=["POST"])
-def api_watchlist_add():
-    body = request.get_json(force=True)
-    items = _load_watchlist()
-    next_id = max((x.get("id", 0) for x in items), default=0) + 1
-    item = {
-        "id": next_id,
-        "ticker": body.get("ticker", ""),
-        "name": body.get("name", ""),
-        "market": body.get("market", ""),
-        "alert_price": float(body.get("alert_price", 0)),
-        "direction": body.get("direction", "above"),  # "above" or "below"
-        "ref_price": float(body.get("ref_price", 0)),
-        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "triggered": False,
-    }
-    items.append(item)
-    _save_watchlist(items)
-    return jsonify({"ok": True, "id": next_id})
-
-
-@app.route("/api/watchlist/<int:item_id>", methods=["DELETE"])
-def api_watchlist_delete(item_id):
-    items = _load_watchlist()
-    items = [x for x in items if x.get("id") != item_id]
-    _save_watchlist(items)
-    return jsonify({"ok": True})
-
-
-@app.route("/api/check-prices", methods=["POST"])
-def api_check_prices():
-    """Check current prices for watchlist items. Returns triggered alerts."""
-    body = request.get_json(force=True)
-    tickers = body.get("tickers", [])  # list of {ticker, market}
-    if not tickers:
-        return jsonify({"prices": {}})
-
-    prices = {}
-
-    # Group by market
-    by_market = {}
-    for t in tickers:
-        mk = t.get("market", "US")
-        by_market.setdefault(mk, []).append(t["ticker"])
-
-    for mk, tkrs in by_market.items():
-        markets_cfg = get_markets_config()
-        suffix = markets_cfg.get(mk, {}).get("ticker_suffix", "")
-
-        # Try yfinance first for non-CN
-        if mk != "CN":
-            try:
-                import yfinance as yf
-                syms = [t + suffix if not t.endswith(suffix) else t for t in tkrs]
-                data = yf.download(syms, period="1d", progress=False, auto_adjust=True)
-                close = data["Close"] if "Close" in data else data
-                if hasattr(close, "columns"):
-                    for sym, orig in zip(syms, tkrs):
-                        if sym in close.columns:
-                            val = close[sym].dropna()
-                            if not val.empty:
-                                prices[orig] = round(float(val.iloc[-1]), 4)
-                else:
-                    val = close.dropna()
-                    if not val.empty and tkrs:
-                        prices[tkrs[0]] = round(float(val.iloc[-1]), 4)
-            except Exception as e:
-                app.logger.warning(f"yfinance price check failed for {mk}: {e}")
-        else:
-            # CN: use akshare spot
-            try:
-                import akshare as ak
-                spot = ak.stock_zh_a_spot_em()
-                code_col = "代码"
-                price_col = "最新价"
-                for t in tkrs:
-                    row = spot[spot[code_col] == t]
-                    if not row.empty:
-                        prices[t] = round(float(row.iloc[0][price_col]), 4)
-            except Exception as e:
-                app.logger.warning(f"akshare price check failed: {e}")
-
-    return jsonify({"prices": prices})
-
 
 @app.route("/api/email-config", methods=["GET"])
+@observe(name="api_email_config_get", type="span")
 def api_email_config_get():
     """Return current email config (password masked)."""
     cfg = get_settings().get("email", {})
@@ -2408,6 +2347,7 @@ def api_email_config_get():
 
 
 @app.route("/api/email-config", methods=["POST"])
+@observe(name="api_email_config_save", type="span")
 def api_email_config_save():
     """Save email config to settings.yaml."""
     import yaml
@@ -2433,6 +2373,7 @@ def api_email_config_save():
 
 
 @app.route("/api/notify-alert", methods=["POST"])
+@observe(name="api_notify_alert", type="span")
 def api_notify_alert():
     """Send an email alert for a triggered price watch."""
     import smtplib
@@ -2480,6 +2421,7 @@ def api_notify_alert():
 # ---------------------------------------------------------------------------
 
 @app.route("/backtest")
+@observe(name="backtest_page", type="span")
 def backtest_page():
     markets_cfg  = get_markets_config()
     market_codes = sorted(markets_cfg.keys(), key=_market_sort_key) if markets_cfg else _MARKET_ORDER
@@ -2491,6 +2433,7 @@ def backtest_page():
 
 
 @app.route("/api/backtest/run", methods=["POST"])
+@observe(name="api_backtest_run", type="span")
 def api_backtest_run():
     from src.backtest.engine import run_backtest
 
@@ -2538,6 +2481,7 @@ def api_backtest_run():
 
 
 @app.route("/api/backtest/status/<market>/<timeframe>")
+@observe(name="api_backtest_status", type="span")
 def api_backtest_status(market, timeframe):
     """
     Return cached result metadata (metrics only, no full equity curve/trades).
@@ -2569,6 +2513,7 @@ def api_backtest_status(market, timeframe):
 
 
 @app.route("/api/backtest/strategies")
+@observe(name="api_backtest_strategies", type="span")
 def api_backtest_strategies():
     """Return available strategies per timeframe."""
     from src.backtest.strategies import strategies_for_timeframe, DEFAULTS
@@ -2582,6 +2527,7 @@ def api_backtest_strategies():
 
 
 @app.route("/api/backtest/preview", methods=["POST"])
+@observe(name="api_backtest_preview", type="span")
 def api_backtest_preview():
     """
     Preview selected stocks from all active signal sources combined.
@@ -2679,6 +2625,7 @@ def api_backtest_preview():
 
 
 @app.route("/api/backtest/generate-signal", methods=["POST"])
+@observe(name="api_backtest_generate_signal", type="span")
 def api_backtest_generate_signal():
     """
     Generate select() code from natural language description.
@@ -2701,6 +2648,7 @@ def api_backtest_generate_signal():
 
 
 @app.route("/api/backtest/validate-signal", methods=["POST"])
+@observe(name="api_backtest_validate_signal", type="span")
 def api_backtest_validate_signal():
     """
     Validate a select() function by running it on a small test dataset.
@@ -2738,6 +2686,7 @@ def api_backtest_validate_signal():
         return jsonify({"valid": False, "error": str(e)})
 
 
+@observe(name="_build_agent_response", type="span")
 def _build_agent_response(agent_type, market, message):
     """Route to the correct agent response builder."""
     if agent_type == "market":
@@ -2757,6 +2706,7 @@ def _build_agent_response(agent_type, market, message):
         return f"Unknown agent type: {agent_type}"
 
 
+@observe(name="_get_name_lookup", type="tool")
 def _get_name_lookup(market):
     """Load ticker→name mapping from universe file."""
     try:
@@ -2768,6 +2718,7 @@ def _get_name_lookup(market):
     return {}
 
 
+@observe(name="_data_agent_response", type="span")
 def _data_agent_response(market, message):
     """Data Agent: precise, numbers-focused, professional."""
     base_path = get_data_path("markets", market, "")
@@ -2963,6 +2914,7 @@ def _data_agent_response(market, message):
     return "\n".join(lines)
 
 
+@observe(name="_news_agent_response", type="span")
 def _news_agent_response(market, message):
     """News Agent: informative, headline-style, journalist-like."""
     news_path = get_data_path("markets", market, "news.parquet")
@@ -3038,6 +2990,7 @@ def _news_agent_response(market, message):
     return "\n".join(lines)
 
 
+@observe(name="_signal_agent_response", type="span")
 def _signal_agent_response(market, message):
     """Signal Agent: synthesizes data + news + alerts into briefings."""
     base_path = get_data_path("markets", market, "")
@@ -3199,6 +3152,7 @@ def _signal_agent_response(market, message):
     return _signal_agent_response(market, "summary")
 
 
+@observe(name="_global_agent_response", type="span")
 def _global_agent_response(message):
     """Global Agent: big-picture, strategic, analytical."""
 

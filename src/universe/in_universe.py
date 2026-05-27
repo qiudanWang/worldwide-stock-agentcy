@@ -4,6 +4,7 @@ import requests
 import pandas as pd
 from src.common.config import get_data_path
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("universe.in")
 
@@ -90,6 +91,7 @@ _KNOWN_IN_TECH = {
 _KNOWN_IN_TECH.pop("ABORTIVETC", None)
 
 
+@observe(name="_get_nse_session", type="tool")
 def _get_nse_session() -> requests.Session:
     """Create a session with NSE cookies (required to bypass anti-bot)."""
     session = requests.Session()
@@ -102,14 +104,22 @@ def _get_nse_session() -> requests.Session:
     return session
 
 
+@observe(name="_fetch_index_constituents", type="tool")
 def _fetch_index_constituents(session: requests.Session, index_name: str) -> list[dict]:
     """Fetch constituents of an NSE index."""
     url = f"{_NSE_BASE}/api/equity-stockIndices"
     params = {"index": index_name}
 
     log.info(f"Fetching NSE index: {index_name}")
-    resp = session.get(url, params=params, timeout=15)
-    resp.raise_for_status()
+    try:
+        resp = session.get(url, params=params, timeout=15)
+        resp.raise_for_status()
+    except requests.HTTPError as e:
+        log.warning(f"NSE API unavailable for {index_name} ({e}). Falling back to known-stocks baseline.")
+        return []
+    except Exception as e:
+        log.warning(f"NSE fetch failed for {index_name} ({e}). Falling back to known-stocks baseline.")
+        return []
 
     data = resp.json()
     stocks = data.get("data", [])
@@ -117,6 +127,7 @@ def _fetch_index_constituents(session: requests.Session, index_name: str) -> lis
     return stocks
 
 
+@observe(name="build_in_tech_universe", type="tool")
 def build_in_tech_universe() -> pd.DataFrame:
     """Fetch Indian tech stocks dynamically from NSE sector indices.
 
@@ -212,6 +223,7 @@ def build_in_tech_universe() -> pd.DataFrame:
     return result
 
 
+@observe(name="_fallback_watchlist", type="tool")
 def _fallback_watchlist() -> pd.DataFrame:
     """Load the static YAML watchlist as fallback."""
     from src.universe.yf_universe import build_yf_universe

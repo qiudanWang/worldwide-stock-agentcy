@@ -261,41 +261,6 @@
         .conv-item-del:hover { color: #f85149; }
         .conv-group-label { padding: 8px 14px 3px; font-size: 10px; color: #484f58; text-transform: uppercase; letter-spacing: 0.5px; }
         .conv-empty { padding: 24px 14px; color: #484f58; font-size: 12px; text-align: center; }
-        /* Watchlist tag */
-        .watch-tag { background: #0d2137; border: 1px solid #1f6feb; color: #58a6ff; padding: 4px 12px; border-radius: 12px; font-size: 11px; cursor: pointer; transition: all 0.15s; margin: 0 12px 8px; display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; }
-        .watch-tag:hover { background: #1f6feb33; }
-        #watch-modal { display: none; position: fixed; inset: 0; background: #000a; z-index: 1000; align-items: center; justify-content: center; }
-        #watch-modal.open { display: flex; }
-        .watch-modal-box { background: #161b22; border: 1px solid #30363d; border-radius: 10px; width: 500px; max-height: 82vh; display: flex; flex-direction: column; overflow: hidden; }
-        .watch-modal-header { padding: 12px 16px; border-bottom: 1px solid #30363d; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
-        .watch-modal-header h3 { margin: 0; font-size: 14px; color: #c9d1d9; }
-        .watch-modal-body { overflow-y: auto; flex: 1; }
-        .wm-section { padding: 10px 16px 6px; font-size: 11px; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #21262d; }
-        .wrec-row { display: flex; align-items: center; gap: 8px; padding: 7px 16px; border-bottom: 1px solid #21262d; transition: background 0.1s; }
-        .wrec-row:hover { background: #1c2128; }
-        .wrec-ticker { font-weight: 700; color: #c9d1d9; font-size: 12px; min-width: 64px; }
-        .wrec-name { color: #8b949e; font-size: 11px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .wrec-ret { font-size: 11px; min-width: 50px; text-align: right; font-weight: 600; }
-        .wrec-price { font-size: 11px; color: #8b949e; min-width: 60px; text-align: right; }
-        .wdir-btn { background: #21262d; border: 1px solid #30363d; color: #8b949e; padding: 2px 6px; border-radius: 4px; font-size: 10px; cursor: pointer; white-space: nowrap; }
-        .wdir-btn.above { border-color: #3fb95080; color: #3fb950; }
-        .wdir-btn.below { border-color: #f8514980; color: #f85149; }
-        .walert-input { width: 72px; background: #0d1117; border: 1px solid #30363d; color: #c9d1d9; padding: 2px 5px; border-radius: 4px; font-size: 11px; outline: none; }
-        .walert-input:focus { border-color: #58a6ff; }
-        .wadd-btn { background: #238636; border: 1px solid #2ea043; color: #fff; padding: 2px 9px; border-radius: 4px; font-size: 11px; cursor: pointer; white-space: nowrap; }
-        .wadd-btn:hover { background: #2ea043; }
-        .wadd-btn:disabled { background: #21262d; border-color: #30363d; color: #8b949e; cursor: default; }
-        .wcustom-row { display: flex; align-items: center; gap: 6px; padding: 10px 16px; border-bottom: 1px solid #21262d; }
-        .wcustom-row input,.wcustom-row select { background: #0d1117; border: 1px solid #30363d; color: #c9d1d9; padding: 4px 7px; border-radius: 4px; font-size: 11px; outline: none; }
-        .wcustom-row input:focus,.wcustom-row select:focus { border-color: #58a6ff; }
-        .wlist-item { display: flex; align-items: center; gap: 8px; padding: 7px 16px; border-bottom: 1px solid #21262d; font-size: 11px; }
-        .wlist-ticker { font-weight: 700; color: #c9d1d9; min-width: 64px; }
-        .wlist-cond { flex: 1; color: #8b949e; }
-        .wlist-del { background: none; border: 1px solid #30363d; color: #8b949e; cursor: pointer; font-size: 11px; padding: 2px 8px; border-radius: 4px; }
-        .wlist-del:hover { border-color: #f85149; color: #f85149; }
-        #watch-toast-container { position: fixed; top: 70px; right: 20px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; }
-        .watch-toast { background: #161b22; border: 1px solid #3fb950; border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #c9d1d9; box-shadow: 0 4px 12px #0006; min-width: 260px; animation: slideIn 0.2s ease; }
-        .watch-toast.triggered { border-color: #d29922; }
         @keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         /* Chat FAB */
         .chat-fab { position: fixed; bottom: 24px; right: 24px; width: 44px; height: 44px; border-radius: 50%; background: #1f6feb; border: none; color: #fff; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.5); z-index: 195; display: flex; align-items: center; justify-content: center; transition: background 0.15s, transform 0.15s, opacity 0.2s; }
@@ -371,8 +336,7 @@
         <div class="chat-main">
             <div class="chat-messages" id="chat-messages"></div>
             <div class="chat-suggestions" id="chat-suggestions"></div>
-            <span class="watch-tag" onclick="openWatchModal()">👁 Watchlist <span id="wl-count" style="display:none;background:#1f6feb;color:#fff;border-radius:8px;padding:0 5px;margin-left:2px;font-size:10px;"></span></span>
-            <div class="chat-input-row">
+<div class="chat-input-row">
                 <textarea id="chat-input" placeholder="Ask about markets... (Shift+Enter for new line)" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage();}"></textarea>
                 <button onclick="sendMessage()">Send</button>
             </div>
@@ -380,38 +344,6 @@
     </div>
 </div>
 
-<!-- Watch Modal -->
-<div id="watch-modal">
-    <div class="watch-modal-box">
-        <div class="watch-modal-header">
-            <h3>👁 Watchlist</h3>
-            <div style="display:flex;align-items:center;gap:8px;">
-                <button onclick="toggleEmailSettings()" id="email-settings-btn" style="background:none;border:1px solid #30363d;color:#8b949e;cursor:pointer;font-size:11px;padding:3px 8px;border-radius:4px;" title="Email alert settings">✉ Email</button>
-                <button onclick="closeWatchModal()" style="background:none;border:none;color:#8b949e;cursor:pointer;font-size:18px;">&times;</button>
-            </div>
-        </div>
-        <div id="email-settings-panel" style="display:none;padding:12px 16px;background:#0d1117;border-bottom:1px solid #30363d;">
-            <div style="color:#8b949e;font-size:11px;margin-bottom:8px;">Alert emails are sent when a price target is hit.<br>For Gmail: use an <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color:#58a6ff;">App Password</a>.</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-                <div><div style="color:#8b949e;font-size:10px;margin-bottom:3px;">SMTP Host</div><input id="email-smtp-host" type="text" value="smtp.gmail.com" style="width:100%;box-sizing:border-box;background:#161b22;border:1px solid #30363d;color:#c9d1d9;padding:4px 7px;border-radius:4px;font-size:11px;outline:none;" /></div>
-                <div><div style="color:#8b949e;font-size:10px;margin-bottom:3px;">SMTP Port</div><input id="email-smtp-port" type="number" value="587" style="width:100%;box-sizing:border-box;background:#161b22;border:1px solid #30363d;color:#c9d1d9;padding:4px 7px;border-radius:4px;font-size:11px;outline:none;" /></div>
-                <div><div style="color:#8b949e;font-size:10px;margin-bottom:3px;">SMTP User</div><input id="email-smtp-user" type="email" placeholder="you@gmail.com" style="width:100%;box-sizing:border-box;background:#161b22;border:1px solid #30363d;color:#c9d1d9;padding:4px 7px;border-radius:4px;font-size:11px;outline:none;" /></div>
-                <div><div style="color:#8b949e;font-size:10px;margin-bottom:3px;">App Password</div><input id="email-smtp-password" type="password" placeholder="xxxx xxxx xxxx xxxx" style="width:100%;box-sizing:border-box;background:#161b22;border:1px solid #30363d;color:#c9d1d9;padding:4px 7px;border-radius:4px;font-size:11px;outline:none;" /></div>
-            </div>
-            <div><div style="color:#8b949e;font-size:10px;margin-bottom:3px;">Recipient Email</div><input id="email-recipient" type="email" placeholder="you@gmail.com" style="width:100%;box-sizing:border-box;background:#161b22;border:1px solid #30363d;color:#c9d1d9;padding:4px 7px;border-radius:4px;font-size:11px;outline:none;margin-bottom:8px;" /></div>
-            <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#8b949e;cursor:pointer;margin-bottom:8px;"><input type="checkbox" id="email-enabled" /> Enable email alerts</label>
-            <div style="display:flex;gap:8px;align-items:center;">
-                <button onclick="saveEmailConfig()" style="background:#238636;border:1px solid #2ea043;color:#fff;padding:4px 12px;border-radius:4px;font-size:11px;cursor:pointer;">Save</button>
-                <button onclick="testEmail()" style="background:#21262d;border:1px solid #30363d;color:#8b949e;padding:4px 12px;border-radius:4px;font-size:11px;cursor:pointer;">Test</button>
-                <span id="email-save-msg" style="font-size:11px;"></span>
-            </div>
-        </div>
-        <div class="watch-modal-body" id="watch-modal-body"></div>
-    </div>
-</div>
-
-<!-- Toast container -->
-<div id="watch-toast-container"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
@@ -682,8 +614,6 @@
         });
         syncChatPanelPosition();
         window.addEventListener('resize', syncChatPanelPosition);
-        refreshWatchlistCount();
-
         // Auto-resize textarea as user types
         const chatInput = document.getElementById('chat-input');
         chatInput.addEventListener('input', function() {
@@ -887,187 +817,7 @@
         setTimeout(() => { msg.textContent = ''; }, 4000);
     }
 
-    // ── Watchlist ───────────────────────────────────────────────────
-    let _wDirs = {};
-    let _wcDir = 'above';
-
-    async function openWatchModal() {
-        document.getElementById('watch-modal').classList.add('open');
-        await renderWatchModalBody();
-    }
-    function closeWatchModal() { document.getElementById('watch-modal').classList.remove('open'); }
-    document.getElementById('watch-modal').addEventListener('click', function(e) { if (e.target === this) closeWatchModal(); });
-
-    function _watchMarket() {
-        if (!currentChatAgent || currentChatAgent === 'global') return '';
-        return currentChatAgent.split('_')[0] || '';
-    }
-
-    async function renderWatchModalBody() {
-        const body = document.getElementById('watch-modal-body');
-        body.innerHTML = '<div style="color:#8b949e;font-size:12px;text-align:center;padding:20px;">Loading...</div>';
-        const market = _watchMarket();
-        let gainers = [], losers = [], watchlist = [];
-        try {
-            const url = market ? `/api/top-movers?market=${market}&n=5` : '/api/top-movers?n=5';
-            const [mvResp, wlResp] = await Promise.all([fetch(url), fetch('/api/watchlist')]);
-            const mv = await mvResp.json();
-            gainers = mv.gainers || []; losers = mv.losers || [];
-            watchlist = await wlResp.json();
-        } catch(e) { body.innerHTML = '<div style="color:#f85149;font-size:12px;padding:12px;">Failed to load data.</div>'; return; }
-
-        const addedKeys = new Set(watchlist.map(x => x.ticker + '_' + x.market));
-        function recRow(s) {
-            const ret = s.return_1d, retColor = ret >= 0 ? '#3fb950' : '#f85149';
-            const retStr = (ret >= 0 ? '+' : '') + ret.toFixed(2) + '%';
-            const defDir = ret >= 0 ? 'above' : 'below';
-            const defPrice = s.close ? (ret >= 0 ? (s.close * 1.02).toFixed(2) : (s.close * 0.98).toFixed(2)) : '';
-            const key = s.ticker + '_' + s.market;
-            _wDirs[key] = defDir;
-            const already = addedKeys.has(key);
-            const safeName = (s.name || '').replace(/'/g, "\\'");
-            return `<div class="wrec-row" id="wsr-${key}">
-                <div class="wrec-ticker">${s.ticker}<div style="color:#484f58;font-size:9px;font-weight:400;">${s.market}</div></div>
-                <div class="wrec-name">${s.name || ''}</div>
-                <div class="wrec-ret" style="color:${retColor};">${retStr}</div>
-                <div class="wrec-price">${s.close ? s.close : ''}</div>
-                <button class="wdir-btn ${defDir}" id="wdb-${key}" onclick="toggleWDir('${key}')">${defDir === 'above' ? '▲ above' : '▼ below'}</button>
-                <input class="walert-input" id="wpi-${key}" type="number" placeholder="price" value="${defPrice}" step="0.01" />
-                <button class="wadd-btn" id="wadd-${key}" ${already ? 'disabled' : ''}
-                    onclick="wAdd('${s.ticker}','${safeName}','${s.market}','${s.close||0}','${key}')">${already ? '✓' : '+'}</button>
-            </div>`;
-        }
-        const markets = [...new Set([...gainers, ...losers].map(s => s.market))];
-        const marketLabel = markets.length === 1 ? markets[0] : (market || 'All');
-        const mktOptions = ['CN','US','HK','JP','IN','UK','DE','FR','KR','TW','AU','BR','SA'].map(m => `<option value="${m}"${m === (market||'US') ? ' selected' : ''}>${m}</option>`).join('');
-        body.innerHTML = `
-        <div class="wm-section">📈 Top Gainers — ${marketLabel}</div>
-        ${gainers.length ? gainers.map(recRow).join('') : '<div style="color:#8b949e;font-size:11px;padding:8px 16px;">No data</div>'}
-        <div class="wm-section">📉 Top Losers — ${marketLabel}</div>
-        ${losers.length ? losers.map(recRow).join('') : '<div style="color:#8b949e;font-size:11px;padding:8px 16px;">No data</div>'}
-        <div class="wm-section">➕ Custom</div>
-        <div class="wcustom-row">
-            <input id="wc-ticker" placeholder="Ticker" style="width:70px;" />
-            <select id="wc-market" style="width:68px;">${mktOptions}</select>
-            <button class="wdir-btn above" id="wc-dir" onclick="toggleWCustomDir()" style="min-width:58px;">▲ above</button>
-            <input id="wc-price" type="number" placeholder="price" class="walert-input" style="width:80px;" />
-            <button class="wadd-btn" onclick="wAddCustom()">Add</button>
-        </div>
-        <div class="wm-section">👁 My Watches</div>
-        <div id="wlist-items">${_renderWlItems(watchlist)}</div>
-        <div style="color:#8b949e;font-size:10px;padding:8px 16px;">Prices checked every 30s while page is open.</div>`;
-    }
-
-    function _renderWlItems(watchlist) {
-        if (!watchlist.length) return '<div style="color:#8b949e;font-size:11px;padding:10px 16px;">Nothing added yet.</div>';
-        return watchlist.map(item => {
-            const dirColor = item.direction === 'above' ? '#3fb950' : '#f85149';
-            const dirStr = item.direction === 'above' ? '▲ ≥' : '▼ ≤';
-            return `<div class="wlist-item" id="wli-${item.id}">
-                <span class="wlist-ticker">${item.ticker}</span>
-                <span style="color:#484f58;font-size:10px;">${item.market}</span>
-                <span class="wlist-cond">${item.name ? item.name + ' — ' : ''}<span style="color:${dirColor};">${dirStr} ${item.alert_price}</span></span>
-                <span style="color:${item.triggered ? '#d29922' : '#3fb950'};font-size:10px;">${item.triggered ? '🔔' : '●'}</span>
-                <button class="wlist-del" onclick="wRemove(${item.id})">Remove</button>
-            </div>`;
-        }).join('');
-    }
-
-    function toggleWCustomDir() {
-        _wcDir = _wcDir === 'above' ? 'below' : 'above';
-        const btn = document.getElementById('wc-dir');
-        btn.className = 'wdir-btn ' + _wcDir;
-        btn.textContent = _wcDir === 'above' ? '▲ above' : '▼ below';
-    }
-    function toggleWDir(key) {
-        const next = (_wDirs[key] || 'above') === 'above' ? 'below' : 'above';
-        _wDirs[key] = next;
-        const btn = document.getElementById('wdb-' + key);
-        btn.className = 'wdir-btn ' + next;
-        btn.textContent = next === 'above' ? '▲ above' : '▼ below';
-    }
-    async function wAdd(ticker, name, market, refPrice, key) {
-        const priceEl = document.getElementById('wpi-' + key);
-        const alertPrice = parseFloat(priceEl.value);
-        if (!alertPrice || isNaN(alertPrice)) { priceEl.style.borderColor = '#f85149'; setTimeout(() => priceEl.style.borderColor = '#30363d', 1500); return; }
-        await _postWatch({ ticker, name, market, alert_price: alertPrice, direction: _wDirs[key] || 'above', ref_price: parseFloat(refPrice) || 0 });
-        const btn = document.getElementById('wadd-' + key);
-        if (btn) { btn.textContent = '✓'; btn.disabled = true; }
-        await _refreshWListSection();
-    }
-    async function wAddCustom() {
-        const tickerEl = document.getElementById('wc-ticker'), priceEl = document.getElementById('wc-price');
-        const ticker = tickerEl.value.trim().toUpperCase(), market = document.getElementById('wc-market').value;
-        const alertPrice = parseFloat(priceEl.value);
-        if (!ticker) { tickerEl.style.borderColor = '#f85149'; setTimeout(() => tickerEl.style.borderColor = '#30363d', 1500); return; }
-        if (!alertPrice || isNaN(alertPrice)) { priceEl.style.borderColor = '#f85149'; setTimeout(() => priceEl.style.borderColor = '#30363d', 1500); return; }
-        await _postWatch({ ticker, name: '', market, alert_price: alertPrice, direction: _wcDir, ref_price: 0 });
-        tickerEl.value = ''; priceEl.value = '';
-        await _refreshWListSection();
-    }
-    async function _postWatch(data) {
-        try {
-            await fetch('/api/watchlist', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
-            showWatchToast(`✓ Watching ${data.ticker} — alert when ${data.direction} ${data.alert_price}`, false);
-            refreshWatchlistCount();
-        } catch(e) { showWatchToast('Failed to add', true); }
-    }
-    async function wRemove(id) {
-        try { await fetch(`/api/watchlist/${id}`, { method: 'DELETE' }); await _refreshWListSection(); refreshWatchlistCount(); }
-        catch(e) { showWatchToast('Failed to remove', true); }
-    }
-    async function _refreshWListSection() {
-        try {
-            const resp = await fetch('/api/watchlist');
-            const items = await resp.json();
-            refreshWatchlistCount(items);
-            const container = document.getElementById('wlist-items');
-            if (container) container.innerHTML = _renderWlItems(items);
-        } catch(e) {}
-    }
-    async function refreshWatchlistCount(items) {
-        try {
-            if (!items) { const r = await fetch('/api/watchlist'); items = await r.json(); }
-            const cnt = items.filter(x => !x.triggered).length;
-            const badge = document.getElementById('wl-count');
-            if (badge) { if (cnt > 0) { badge.textContent = cnt; badge.style.display = 'inline'; } else { badge.style.display = 'none'; } }
-        } catch(e) {}
-    }
-    function showWatchToast(msg, isError) {
-        const container = document.getElementById('watch-toast-container');
-        const toast = document.createElement('div');
-        toast.className = 'watch-toast' + (isError ? ' triggered' : '');
-        toast.textContent = msg;
-        container.appendChild(toast);
-        setTimeout(() => toast.remove(), 5000);
-    }
-    async function checkWatchlistPrices() {
-        let items;
-        try { const r = await fetch('/api/watchlist'); items = await r.json(); } catch(e) { return; }
-        const active = items.filter(x => !x.triggered);
-        if (!active.length) return;
-        let prices;
-        try {
-            const r = await fetch('/api/check-prices', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ tickers: active.map(x => ({ ticker: x.ticker, market: x.market })) }) });
-            prices = (await r.json()).prices || {};
-        } catch(e) { return; }
-        for (const item of active) {
-            const price = prices[item.ticker];
-            if (price == null) continue;
-            const hit = item.direction === 'above' ? price >= item.alert_price : price <= item.alert_price;
-            if (hit) {
-                const msg = `🔔 ${item.ticker} (${item.market}) = ${price} — ${item.direction === 'above' ? '≥' : '≤'}${item.alert_price}`;
-                showWatchToast(msg, true);
-                if (Notification && Notification.permission === 'granted') new Notification('Price Alert', { body: msg });
-                fetch('/api/notify-alert', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ ticker: item.ticker, market: item.market, price, direction: item.direction, alert_price: item.alert_price }) }).catch(() => {});
-                await fetch(`/api/watchlist/${item.id}`, { method: 'DELETE' });
-                refreshWatchlistCount();
-            }
-        }
-    }
-
     if (Notification && Notification.permission === 'default') Notification.requestPermission();
-    setInterval(checkWatchlistPrices, 30000);
 </script>
 </body>
 </html>
