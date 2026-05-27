@@ -144,6 +144,9 @@ def _extract_issues(raw: str) -> Optional[list[str]]:
 
 @observe(name="_call_llm", type="tool")
 def _call_llm(client, model: str, messages: list) -> str:
+    if client is None:
+        # Anthropic path — client is the api_key string
+        raise ValueError("Use _call_llm_anthropic for Anthropic models")
     # o-series and gpt-5.x use max_completion_tokens; older models use max_tokens
     token_key = "max_completion_tokens" if re.match(r"^(o\d|gpt-5)", model) else "max_tokens"
     resp = client.chat.completions.create(
@@ -153,6 +156,21 @@ def _call_llm(client, model: str, messages: list) -> str:
         temperature=0.0,
     )
     return resp.choices[0].message.content or ""
+
+
+@observe(name="_call_llm_anthropic", type="tool")
+def _call_llm_anthropic(api_key: str, model: str, messages: list) -> str:
+    import anthropic
+    client = anthropic.Anthropic(api_key=api_key)
+    system = next((m["content"] for m in messages if m["role"] == "system"), "")
+    user_msgs = [m for m in messages if m["role"] != "system"]
+    resp = client.messages.create(
+        model=model,
+        system=system,
+        messages=user_msgs,
+        max_tokens=1500,
+    )
+    return resp.content[0].text if resp.content else ""
 
 
 @observe(name="generate_signal_code", type="tool")
@@ -176,19 +194,26 @@ def generate_signal_code(description: str, llm_config: dict) -> dict:
     if not api_key:
         return {"code": "", "explanation": "", "success": False, "error": "No API key configured", "attempts": 0}
 
+    is_anthropic = "anthropic.com" in base_url
+
     try:
-        from openai import OpenAI
-        import httpx
-        client = OpenAI(api_key=api_key, base_url=base_url)
+        if not is_anthropic:
+            from openai import OpenAI
+            client = OpenAI(api_key=api_key, base_url=base_url)
 
         gen_messages = [
             {"role": "system", "content": SYSTEM_GENERATOR},
             {"role": "user",   "content": f"Write a select() function that: {description}"},
         ]
 
+        def call(msgs):
+            if is_anthropic:
+                return _call_llm_anthropic(api_key, model, msgs)
+            return _call_llm(client, model, msgs)
+
         for attempt in range(1, MAX_REFLECTION_ATTEMPTS + 1):
             # ── Generate ──────────────────────────────────────────────────────
-            raw = _call_llm(client, model, gen_messages)
+            raw = call(gen_messages)
             log.debug(f"[signal_builder] attempt {attempt} generator response: {raw[:200]}")
 
             parsed = _extract_code(raw, description)
@@ -200,7 +225,7 @@ def generate_signal_code(description: str, llm_config: dict) -> dict:
             code, explanation = parsed
 
             # ── Reflect ───────────────────────────────────────────────────────
-            ref_raw = _call_llm(client, model, [
+            ref_raw = call([
                 {"role": "system",  "content": SYSTEM_REFLECTOR},
                 {"role": "user",    "content": f"Review this code:\n\n```python\n{code}\n```"},
             ])
