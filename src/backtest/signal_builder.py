@@ -19,6 +19,7 @@ import pandas as pd
 import numpy as np
 
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("backtest.signal_builder")
 
@@ -99,6 +100,7 @@ ISSUES:
 # Parsing helpers
 # ---------------------------------------------------------------------------
 
+@observe(name="_extract_code", type="tool")
 def _extract_code(raw: str, description: str) -> Optional[tuple[str, str]]:
     """Extract (code, explanation) from LLM response. Returns None if not found."""
     # 1. ```python block (primary)
@@ -125,6 +127,7 @@ def _extract_code(raw: str, description: str) -> Optional[tuple[str, str]]:
     return None
 
 
+@observe(name="_extract_issues", type="tool")
 def _extract_issues(raw: str) -> Optional[list[str]]:
     """Parse reflector response. Returns None if OK, list of issues otherwise."""
     text = raw.strip()
@@ -139,16 +142,20 @@ def _extract_issues(raw: str) -> Optional[list[str]]:
 # LLM calls
 # ---------------------------------------------------------------------------
 
+@observe(name="_call_llm", type="tool")
 def _call_llm(client, model: str, messages: list) -> str:
+    # o-series and gpt-5.x use max_completion_tokens; older models use max_tokens
+    token_key = "max_completion_tokens" if re.match(r"^(o\d|gpt-5)", model) else "max_tokens"
     resp = client.chat.completions.create(
         model=model,
         messages=messages,
-        max_tokens=1500,
+        **{token_key: 1500},
         temperature=0.0,
     )
     return resp.choices[0].message.content or ""
 
 
+@observe(name="generate_signal_code", type="tool")
 def generate_signal_code(description: str, llm_config: dict) -> dict:
     """
     Call LLM to generate a select() function from natural language,
@@ -257,6 +264,7 @@ _BLOCKED_PATTERNS = [
 ]
 
 
+@observe(name="_check_blocked", type="tool")
 def _check_blocked(code: str) -> Optional[str]:
     for pattern in _BLOCKED_PATTERNS:
         if re.search(pattern, code):
@@ -264,6 +272,7 @@ def _check_blocked(code: str) -> Optional[str]:
     return None
 
 
+@observe(name="safe_compile", type="tool")
 def safe_compile(code: str) -> tuple[Optional[Callable], str]:
     blocked_msg = _check_blocked(code)
     if blocked_msg:
@@ -292,6 +301,7 @@ def safe_compile(code: str) -> tuple[Optional[Callable], str]:
     return fn, ""
 
 
+@observe(name="safe_call_select", type="tool")
 def safe_call_select(fn: Callable, universe_df: pd.DataFrame, history: dict, date) -> tuple[list, str]:
     result_container = [None]
     error_container  = [""]
@@ -323,6 +333,7 @@ def safe_call_select(fn: Callable, universe_df: pd.DataFrame, history: dict, dat
     return result_container[0] or [], ""
 
 
+@observe(name="validate_select_fn", type="tool")
 def validate_select_fn(code: str, universe_df: pd.DataFrame, history: dict, test_date) -> dict:
     fn, compile_error = safe_compile(code)
     if fn is None:

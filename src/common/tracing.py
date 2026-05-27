@@ -12,7 +12,10 @@ os.environ.setdefault("TRACEROOT_HOST_URL", "https://staging.traceroot.ai/")
 try:
     import traceroot
     from traceroot import Integration
-    traceroot.initialize(integrations=[Integration.OPENAI])
+    traceroot.initialize(
+        integrations=[Integration.OPENAI],
+        git_repo="https://github.com/qiudanWang/worldwide-stock-agentcy",
+    )
     from traceroot import observe
 except ImportError:
     def observe(*args, **kwargs):
