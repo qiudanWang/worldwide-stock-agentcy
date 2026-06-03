@@ -370,10 +370,9 @@ class DataAgent(BaseAgent):
             # Use yfinance fast_info in parallel batches with per-call timeout
             import time
             import yfinance as yf
-            from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeout
+            from concurrent.futures import ThreadPoolExecutor, as_completed
             suffix = self.market_config.get("ticker_suffix", "")
             rows = []
-            PER_CALL_TIMEOUT = 15  # seconds — skip any ticker that doesn't respond
             WORKERS = 5
 
             def _fetch_one(ticker):
@@ -395,8 +394,8 @@ class DataAgent(BaseAgent):
                 futures = {pool.submit(_fetch_one, t): t for t in tickers}
                 for fut in as_completed(futures):
                     try:
-                        ticker, cap = fut.result(timeout=PER_CALL_TIMEOUT)
-                    except (FutureTimeout, Exception):
+                        ticker, cap = fut.result()
+                    except Exception:
                         ticker = futures[fut]
                         cap = None
                     rows.append({"ticker": ticker, "market_cap": cap})
