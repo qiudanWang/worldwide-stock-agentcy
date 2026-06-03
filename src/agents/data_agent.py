@@ -380,11 +380,8 @@ class DataAgent(BaseAgent):
                 symbol = f"{ticker}{suffix}" if suffix else ticker
                 try:
                     with yf_limiter:
-                        try:
-                            fi = yf.Ticker(symbol).fast_info
-                            cap = getattr(fi, "market_cap", None)
-                        except KeyError:
-                            cap = None
+                        fi = call_with_timeout(lambda: yf.Ticker(symbol).fast_info)
+                        cap = getattr(fi, "market_cap", None)
                     return ticker, cap
                 except yf.exceptions.YFRateLimitError:
                     time.sleep(5)

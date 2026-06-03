@@ -29,9 +29,13 @@ def llm_timeout():
 def call_with_timeout(fn, *args, timeout=None, **kwargs):
     """Run fn(*args, **kwargs) in a thread; raise TimeoutError if it exceeds timeout seconds.
 
+    Uses shutdown(wait=False) so a timed-out network thread doesn't block the caller.
     timeout defaults to the configured timeouts.default value (settings.yaml).
     """
     if timeout is None:
         timeout = default_timeout()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-        return ex.submit(fn, *args, **kwargs).result(timeout=timeout)
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    try:
+        return executor.submit(fn, *args, **kwargs).result(timeout=timeout)
+    finally:
+        executor.shutdown(wait=False)
