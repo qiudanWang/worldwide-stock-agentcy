@@ -45,31 +45,25 @@ class BaseStrategy(ABC):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _until(df: pd.DataFrame, date: pd.Timestamp) -> pd.DataFrame:
-    """O(log n) slice of df up to `date` — assumes df is sorted by date asc."""
-    idx = int(df["date"].values.searchsorted(date.to_datetime64(), side="right"))
-    return df.iloc[:idx]
-
-
-def _last_n_closes(history: dict[str, pd.DataFrame], ticker: str, date: pd.Timestamp, n: int) -> Optional[pd.Series]:
-    """Return the last n closing prices up to and including `date`."""
+def _last_n_closes(history: dict[str, pd.DataFrame], ticker: str, date_np, n: int) -> Optional[np.ndarray]:
+    """Return the last n closing prices up to `date` as a numpy array."""
     df = history.get(ticker)
     if df is None or df.empty:
         return None
-    df = _until(df, date).tail(n)
-    if len(df) < n:
+    idx = int(df["date"].values.searchsorted(date_np, side="right"))
+    if idx < n:
         return None
-    return df["close"].reset_index(drop=True)
+    return df["close"].values[idx - n : idx]
 
 
-def _momentum(closes: pd.Series) -> float:
+def _momentum(closes: np.ndarray) -> float:
     """Simple price momentum: last / first - 1."""
     if closes is None or len(closes) < 2:
         return float("-inf")
-    first = closes.iloc[0]
+    first = closes[0]
     if not first or first <= 0:
         return float("-inf")
-    return float(closes.iloc[-1] / first - 1)
+    return float(closes[-1] / first - 1)
 
 
 # ---------------------------------------------------------------------------
@@ -92,19 +86,21 @@ class DailyVolumeBreakout(BaseStrategy):
 
     def select(self, universe_df, history, date):
         tickers = universe_df["ticker"].tolist()
-        n = self.vol_lookback + 1
+        n       = self.vol_lookback + 1
+        date_np = date.to_datetime64()
         tk_list, vol_ratios, ret_1ds = [], [], []
 
         for tk in tickers:
             df = history.get(tk)
             if df is None or df.empty:
                 continue
-            tail = _until(df, date).tail(n)
-            if len(tail) < 2:
+            idx = int(df["date"].values.searchsorted(date_np, side="right"))
+            if idx < 2:
                 continue
-            close = tail["close"].values
-            vol   = tail["volume"].values
-            if close[-2] <= 0:
+            start = max(0, idx - n)
+            close = df["close"].values[start:idx]
+            vol   = df["volume"].values[start:idx]
+            if len(close) < 2 or close[-2] <= 0:
                 continue
             avg_vol = vol[:-1].mean()
             if avg_vol <= 0:
@@ -143,9 +139,10 @@ class WeeklyMomentum5d(BaseStrategy):
 
     def select(self, universe_df, history, date):
         tickers = universe_df["ticker"].tolist()
+        date_np = date.to_datetime64()
         tk_list, moms = [], []
         for tk in tickers:
-            closes = _last_n_closes(history, tk, date, 6)
+            closes = _last_n_closes(history, tk, date_np, 6)
             m = _momentum(closes)
             if m > float("-inf"):
                 tk_list.append(tk)
@@ -180,9 +177,10 @@ class MonthlySectorMomentum(BaseStrategy):
             if "sector" in universe_df.columns else {}
         )
         tickers = universe_df["ticker"].tolist()
+        date_np = date.to_datetime64()
         tk_list, moms = [], []
         for tk in tickers:
-            closes = _last_n_closes(history, tk, date, 21)
+            closes = _last_n_closes(history, tk, date_np, 21)
             m = _momentum(closes)
             if m > float("-inf"):
                 tk_list.append(tk)
@@ -223,9 +221,10 @@ class YearlyMomentum252d(BaseStrategy):
 
     def select(self, universe_df, history, date):
         tickers = universe_df["ticker"].tolist()
+        date_np = date.to_datetime64()
         tk_list, moms = [], []
         for tk in tickers:
-            closes = _last_n_closes(history, tk, date, 253)
+            closes = _last_n_closes(history, tk, date_np, 253)
             m = _momentum(closes)
             if m > float("-inf"):
                 tk_list.append(tk)
