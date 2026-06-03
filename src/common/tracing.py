@@ -6,7 +6,7 @@ so every module gets a consistent, already-initialized decorator.
 
 import os
 
-os.environ.setdefault("TRACEROOT_API_KEY", "tr-5de4fc1a-4ca6-457b-9edf-0ce9ea40d839")
+os.environ.setdefault("TRACEROOT_API_KEY", "tr-795818bf-8dca-4039-8125-0eeea8d71e21")
 os.environ.setdefault("TRACEROOT_HOST_URL", "https://staging.traceroot.ai/")
 
 try:
