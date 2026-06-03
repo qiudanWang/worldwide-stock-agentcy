@@ -23,10 +23,13 @@ import glob
 import re
 
 import pandas as pd
+from src.common.timeout import call_with_timeout
+from src.common.tracing import observe
 
 
 # ── Market detection ──────────────────────────────────────────────
 
+@observe(name="detect_market", type="span")
 def detect_market(ticker: str) -> str:
     """Return market code from ticker format."""
     t = ticker.strip().upper()
@@ -49,6 +52,7 @@ def detect_market(ticker: str) -> str:
 
 # ── Data gathering ────────────────────────────────────────────────
 
+@observe(name="_load_local_price", type="tool")
 def _load_local_price(ticker: str, market: str, data_dir: str) -> dict:
     """Load latest price snapshot + 20-day history from local pipeline."""
     base = os.path.join(data_dir, "markets", market)
@@ -97,6 +101,7 @@ def _load_local_price(ticker: str, market: str, data_dir: str) -> dict:
     return result
 
 
+@observe(name="_load_local_news", type="tool")
 def _load_local_news(ticker: str, market: str, data_dir: str) -> list:
     try:
         path = os.path.join(data_dir, "markets", market, "news.parquet")
@@ -114,6 +119,7 @@ def _load_local_news(ticker: str, market: str, data_dir: str) -> list:
         return []
 
 
+@observe(name="_load_local_alerts", type="tool")
 def _load_local_alerts(ticker: str, market: str, data_dir: str) -> list:
     try:
         path = os.path.join(data_dir, "markets", market, "alerts.json")
@@ -124,6 +130,7 @@ def _load_local_alerts(ticker: str, market: str, data_dir: str) -> list:
         return []
 
 
+@observe(name="_load_local_universe", type="tool")
 def _load_local_universe(ticker: str, market: str, data_dir: str) -> dict:
     try:
         path = os.path.join(data_dir, "markets", market, "universe.parquet")
@@ -137,6 +144,7 @@ def _load_local_universe(ticker: str, market: str, data_dir: str) -> dict:
         return {}
 
 
+@observe(name="_load_local_peers", type="tool")
 def _load_local_peers(ticker: str, market: str, data_dir: str) -> str:
     """Find peer companies in the same industry/sector from local universe data.
 
@@ -346,13 +354,14 @@ def _load_local_peers(ticker: str, market: str, data_dir: str) -> str:
     return "\n".join(parts)
 
 
+@observe(name="_load_cn_fundamentals", type="tool")
 def _load_cn_fundamentals(ticker: str) -> dict:
     """Fetch CN A-share valuation & financial data via akshare."""
     result = {}
     try:
         import akshare as ak
         # Valuation indicators (P/E, P/B, market cap, dividend yield)
-        val = ak.stock_a_lg_indicator_push(stock=ticker)
+        val = call_with_timeout(ak.stock_a_lg_indicator_push, stock=ticker)
         if not val.empty:
             row = val.iloc[-1]
             for col in val.columns:
@@ -362,7 +371,7 @@ def _load_cn_fundamentals(ticker: str) -> dict:
     try:
         import akshare as ak
         # Latest financial summary
-        fin = ak.stock_financial_abstract_ths(symbol=ticker, indicator="按年度")
+        fin = call_with_timeout(ak.stock_financial_abstract_ths, symbol=ticker, indicator="按年度")
         if not fin.empty:
             latest = fin.iloc[0]
             result["financials"] = latest.to_dict()
@@ -371,6 +380,7 @@ def _load_cn_fundamentals(ticker: str) -> dict:
     return result
 
 
+@observe(name="_load_yf_fundamentals", type="tool")
 def _load_yf_fundamentals(ticker: str, market: str = None, data_dir: str = None) -> dict:
     """Load fundamentals: pipeline cache first, then live yfinance fallback."""
     # ── 1. Try pipeline cache (fundamentals.parquet written by DataAgent weekly) ──
@@ -394,7 +404,7 @@ def _load_yf_fundamentals(ticker: str, market: str = None, data_dir: str = None)
     try:
         import yfinance as yf
         t = yf.Ticker(ticker)
-        info = t.info or {}
+        info = call_with_timeout(lambda: t.info) or {}
         wanted = ["shortName", "sector", "industry", "trailingPE", "priceToBook",
                   "returnOnEquity", "revenueGrowth", "profitMargins", "debtToEquity",
                   "currentPrice", "fiftyTwoWeekHigh", "fiftyTwoWeekLow",
@@ -411,7 +421,7 @@ def _load_yf_fundamentals(ticker: str, market: str = None, data_dir: str = None)
     try:
         import yfinance as yf
         t = yf.Ticker(ticker)
-        qf = t.quarterly_financials
+        qf = call_with_timeout(lambda: t.quarterly_financials)
         if qf is not None and not qf.empty:
             key_rows = ["Total Revenue", "Gross Profit", "Net Income", "Operating Income", "EBITDA"]
             quarterly = {}
@@ -431,7 +441,7 @@ def _load_yf_fundamentals(ticker: str, market: str = None, data_dir: str = None)
     try:
         import yfinance as yf
         t = yf.Ticker(ticker)
-        bs = t.quarterly_balance_sheet
+        bs = call_with_timeout(lambda: t.quarterly_balance_sheet)
         if bs is not None and not bs.empty:
             bs_rows = ["Cash And Cash Equivalents", "Total Debt", "Current Assets",
                        "Current Liabilities", "Total Assets", "Stockholders Equity"]
@@ -454,7 +464,7 @@ def _load_yf_fundamentals(ticker: str, market: str = None, data_dir: str = None)
     try:
         import yfinance as yf
         t = yf.Ticker(ticker)
-        cf = t.quarterly_cashflow
+        cf = call_with_timeout(lambda: t.quarterly_cashflow)
         if cf is not None and not cf.empty:
             cf_rows = ["Operating Cash Flow", "Free Cash Flow", "Capital Expenditure"]
             cashflow = {}
@@ -475,7 +485,7 @@ def _load_yf_fundamentals(ticker: str, market: str = None, data_dir: str = None)
         import yfinance as yf
         t = yf.Ticker(ticker)
         # Price targets
-        targets = t.analyst_price_targets
+        targets = call_with_timeout(lambda: t.analyst_price_targets)
         if targets and isinstance(targets, dict):
             result["analyst_price_targets"] = {
                 k: round(v, 2) for k, v in targets.items()
@@ -503,6 +513,7 @@ def _load_yf_fundamentals(ticker: str, market: str = None, data_dir: str = None)
     return result
 
 
+@observe(name="_load_index_benchmark", type="tool")
 def _load_index_benchmark(market: str, data_dir: str) -> list:
     """Load recent index performance for benchmark context (last 5 trading days)."""
     try:
@@ -532,6 +543,7 @@ def _load_index_benchmark(market: str, data_dir: str) -> list:
         return []
 
 
+@observe(name="gather_data", type="tool")
 def gather_data(ticker: str, market: str, data_dir: str) -> dict:
     """Collect all available data for the ticker."""
     info    = _load_local_universe(ticker, market, data_dir)
@@ -565,10 +577,12 @@ def gather_data(ticker: str, market: str, data_dir: str) -> dict:
 
 # ── Prompt builders ───────────────────────────────────────────────
 
+@observe(name="_fmt", type="span")
 def _fmt(d: dict) -> str:
     return json.dumps(d, ensure_ascii=False, default=str, indent=2)
 
 
+@observe(name="_price_summary", type="span")
 def _price_summary(price: dict) -> str:
     if not price:
         return "No price data available from local pipeline."
@@ -598,6 +612,7 @@ def _price_summary(price: dict) -> str:
 
 # ── LLM analyst calls ─────────────────────────────────────────────
 
+@observe(name="_call_llm", type="llm")
 def _call_llm(system: str, user: str, provider: str, api_key: str,
               max_tokens: int = 600) -> str:
     """Thin wrapper — reuse the openai/anthropic callers from agent_llm."""
@@ -616,6 +631,7 @@ def _call_llm(system: str, user: str, provider: str, api_key: str,
         return _call_openai(api_key, system, [], user, max_tokens=max_tokens)
 
 
+@observe(name="run_market_analyst", type="llm")
 def run_market_analyst(data: dict, provider: str, api_key: str) -> str:
     ticker = data["ticker"]
     name   = data["info"].get("name", ticker)
@@ -647,6 +663,7 @@ def run_market_analyst(data: dict, provider: str, api_key: str) -> str:
     return _call_llm(system, user, provider, api_key, max_tokens=400)
 
 
+@observe(name="run_fundamentals_analyst", type="llm")
 def run_fundamentals_analyst(data: dict, provider: str, api_key: str) -> str:
     ticker = data["ticker"]
     name   = data["info"].get("name", ticker)
@@ -721,6 +738,7 @@ def run_fundamentals_analyst(data: dict, provider: str, api_key: str) -> str:
     return _call_llm(system, user, provider, api_key, max_tokens=450)
 
 
+@observe(name="run_news_analyst", type="llm")
 def run_news_analyst(data: dict, provider: str, api_key: str) -> str:
     ticker = data["ticker"]
     name   = data["info"].get("name", ticker)
@@ -781,6 +799,7 @@ def run_news_analyst(data: dict, provider: str, api_key: str) -> str:
     return _call_llm(system, user, provider, api_key, max_tokens=400)
 
 
+@observe(name="run_bull_researcher", type="llm")
 def run_bull_researcher(ticker: str, name: str,
                         tech: str, fund: str, news: str,
                         provider: str, api_key: str) -> str:
@@ -799,6 +818,7 @@ def run_bull_researcher(ticker: str, name: str,
     return _call_llm(system, user, provider, api_key, max_tokens=300)
 
 
+@observe(name="run_bear_researcher", type="llm")
 def run_bear_researcher(ticker: str, name: str,
                         tech: str, fund: str, news: str,
                         provider: str, api_key: str) -> str:
@@ -817,6 +837,7 @@ def run_bear_researcher(ticker: str, name: str,
     return _call_llm(system, user, provider, api_key, max_tokens=300)
 
 
+@observe(name="run_risk_analyst", type="llm")
 def run_risk_analyst(ticker: str, name: str,
                      bear: str, data: dict,
                      provider: str, api_key: str) -> str:
@@ -835,6 +856,7 @@ def run_risk_analyst(ticker: str, name: str,
     return _call_llm(system, user, provider, api_key, max_tokens=250)
 
 
+@observe(name="run_decision_maker", type="llm")
 def run_decision_maker(ticker: str, name: str,
                        tech: str, fund: str, news: str,
                        bull: str, bear: str, risk: str,
@@ -864,6 +886,7 @@ def run_decision_maker(ticker: str, name: str,
 
 # ── Main entry point ──────────────────────────────────────────────
 
+@observe(name="local_trading_analyze", type="agent")
 def local_trading_analyze(ticker: str, data_dir: str, _allow_us: bool = False) -> str:
     """
     Run full multi-agent analysis for a non-US ticker.
@@ -1000,6 +1023,7 @@ _SECTOR_ALIASES = {
 }
 
 
+@observe(name="resolve_sector", type="span")
 def resolve_sector(query: str) -> list[str]:
     """Return list of sector values to match for a user query string."""
     q = query.lower().strip()
@@ -1010,6 +1034,7 @@ def resolve_sector(query: str) -> list[str]:
     return [query]
 
 
+@observe(name="_gather_sector_data", type="tool")
 def _gather_sector_data(sector_query: str, market: str, data_dir: str) -> dict:
     """Aggregate data for all stocks in a sector."""
     base    = os.path.join(data_dir, "markets", market)
@@ -1147,6 +1172,7 @@ def _gather_sector_data(sector_query: str, market: str, data_dir: str) -> dict:
     }
 
 
+@observe(name="_discover_local_from_web", type="tool")
 def _discover_local_from_web(web_text: str, data_dir: str,
                              hint_markets: list = None) -> str:
     """
@@ -1208,6 +1234,7 @@ def _discover_local_from_web(web_text: str, data_dir: str,
     return "\n".join(lines) if len(lines) > 1 else ""
 
 
+@observe(name="_web_sector_analyze", type="agent")
 def _web_sector_analyze(sector_query: str, markets: list, date: str,
                         provider: str, api_key: str, web_search_fn,
                         data_dir: str = None) -> str:
@@ -1286,6 +1313,7 @@ def _web_sector_analyze(sector_query: str, markets: list, date: str,
     )
 
 
+@observe(name="local_peers_analyze", type="agent")
 def local_peers_analyze(ticker: str, market: str, data_dir: str) -> str:
     """Fixed-format peer comparison report using local price/universe data.
 
@@ -1476,6 +1504,7 @@ def local_peers_analyze(ticker: str, market: str, data_dir: str) -> str:
     return "\n".join(sections)
 
 
+@observe(name="local_sector_analyze", type="agent")
 def local_sector_analyze(sector_query: str, market: str, data_dir: str) -> str:
     """
     Multi-agent sector analysis using local pipeline data.

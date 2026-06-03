@@ -1,5 +1,11 @@
 project_name: global-market-monitor
 
+# Network call timeouts (seconds). Applies to yfinance, akshare, DuckDuckGo, etc.
+timeouts:
+  default: 15       # per-ticker calls (yf.info, ak.stock_news_em, etc.)
+  bulk: 60          # bulk/spot calls (ak.stock_zh_a_spot_em, industry board list, etc.)
+  llm: 60           # OpenAI / LLM API (httpx client)
+
 # Email alert configuration (for price watchlist notifications)
 email:
   enabled: false

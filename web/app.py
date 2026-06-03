@@ -26,6 +26,7 @@ from src.market_data.indices import fetch_indices
 from src.analysis.sector_performance import normalize_sector_df, meta_sector_heatmap, _SECTOR_MAP
 from src.news.world_monitor import FEEDS as GEO_FEEDS
 from src.macro.polymarket import fetch_polymarket_signals
+from src.common.timeout import call_with_timeout
 from src.common.tracing import observe
 try:
     from traceroot import using_attributes
@@ -1103,7 +1104,7 @@ def fetch_company_info(ticker, market, universe_df=None):
     try:
         import yfinance as yf
         yf_sym = _get_yf_symbol(ticker, market, universe_df)
-        info = yf.Ticker(yf_sym).info or {}
+        info = call_with_timeout(lambda: yf.Ticker(yf_sym).info) or {}
 
         # Extract the fields we care about
         result = {

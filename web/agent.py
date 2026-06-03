@@ -12,6 +12,12 @@ import os
 import litellm
 
 from web.agent_tools import TOOL_SCHEMAS, execute_tool
+from src.common.timeout import llm_timeout
+from src.common.tracing import observe
+try:
+    from traceroot import update_current_span
+except ImportError:
+    def update_current_span(**kwargs): pass
 
 litellm.suppress_debug_info = True
 litellm.drop_params = True
@@ -38,6 +44,7 @@ Rules:
 # Config helpers
 # ---------------------------------------------------------------------------
 
+@observe(name="_load_config", type="span")
 def _load_config() -> dict:
     try:
         path = os.path.join(
@@ -50,6 +57,7 @@ def _load_config() -> dict:
         return {}
 
 
+@observe(name="_make_openai_client", type="span")
 def _make_openai_client():
     """Build an OpenAI-compatible client from llm_config.json.
 
@@ -67,7 +75,7 @@ def _make_openai_client():
     client = OpenAI(
         api_key=api_key,
         base_url=base_url,
-        http_client=httpx.Client(verify=False),
+        http_client=httpx.Client(verify=False, timeout=llm_timeout()),
     )
     return client, model
 
@@ -76,6 +84,7 @@ def _make_openai_client():
 # Agent loop
 # ---------------------------------------------------------------------------
 
+@observe(name="agent_chat", type="llm")
 def agent_chat(
     agent_type: str,
     market: str | None,
@@ -102,8 +111,17 @@ def agent_chat(
 
     messages = list(chat_history or []) + [{"role": "user", "content": message}]
 
+    # Record span input and model up front so it's visible even if the call errors
+    update_current_span(
+        model=model,
+        input={"message": message, "market": market, "agent_type": agent_type},
+    )
+
     max_iterations = 10  # safety cap — prevents infinite loops
     used_web_search = False
+    total_input_tokens = 0
+    total_output_tokens = 0
+    iterations = 0
 
     for _ in range(max_iterations):
         response = oai_client.chat.completions.create(
@@ -113,6 +131,12 @@ def agent_chat(
             tool_choice="auto",
             max_completion_tokens=4096,
         )
+        iterations += 1
+
+        # Accumulate token usage across all LLM calls in this agent turn
+        if response.usage:
+            total_input_tokens += response.usage.prompt_tokens or 0
+            total_output_tokens += response.usage.completion_tokens or 0
 
         choice  = response.choices[0]
         message_obj = choice.message
@@ -120,6 +144,11 @@ def agent_chat(
         # ── Done: LLM produced a final answer ──────────────────────────────
         if choice.finish_reason == "stop":
             text = message_obj.content or ""
+            update_current_span(
+                output={"response": text[:1000]},
+                usage={"input_tokens": total_input_tokens, "output_tokens": total_output_tokens},
+                metadata={"iterations": iterations, "used_web_search": used_web_search},
+            )
             return text, context
 
         # ── Tool calls requested ────────────────────────────────────────────
@@ -166,6 +195,16 @@ def agent_chat(
 
         # Unexpected finish_reason — return whatever we have
         text = message_obj.content or "Unable to complete the analysis."
+        update_current_span(
+            output={"response": text[:1000]},
+            usage={"input_tokens": total_input_tokens, "output_tokens": total_output_tokens},
+            metadata={"iterations": iterations, "finish_reason": choice.finish_reason},
+        )
         return text, context
 
+    update_current_span(
+        output={"response": "max_iterations_reached"},
+        usage={"input_tokens": total_input_tokens, "output_tokens": total_output_tokens},
+        metadata={"iterations": iterations},
+    )
     return "Reached maximum tool iterations without a final answer. Please try a more specific question.", context

@@ -2,10 +2,13 @@ import akshare as ak
 import pandas as pd
 from datetime import datetime
 from src.common.logger import get_logger
+from src.common.timeout import call_with_timeout
+from src.common.tracing import observe
 
 log = get_logger("news.cn")
 
 
+@observe(name="fetch_cn_news", type="tool")
 def fetch_cn_news(ticker):
     """Fetch recent news for an A-share stock via AKShare."""
     try:
@@ -14,7 +17,7 @@ def fetch_cn_news(ticker):
         original = pd.options.mode.string_storage
         pd.options.mode.string_storage = "python"
         try:
-            df = ak.stock_news_em(symbol=ticker)
+            df = call_with_timeout(ak.stock_news_em, symbol=ticker)
         finally:
             pd.options.mode.string_storage = original
 
@@ -38,6 +41,7 @@ def fetch_cn_news(ticker):
         return []
 
 
+@observe(name="fetch_cn_news_batch", type="tool")
 def fetch_cn_news_batch(tickers):
     """Fetch news for multiple A-share tickers."""
     all_news = []

@@ -8,6 +8,7 @@ from src.agents.base import BaseAgent, AgentResult
 from src.common.config import get_data_path, load_yaml, get_settings
 from src.common.logger import get_logger
 from src.common.rate_limiter import yf_limiter
+from src.common.timeout import call_with_timeout, bulk_timeout
 from src.common.tracing import observe
 
 log = get_logger("agent.data")
@@ -18,13 +19,13 @@ def _enrich_subsector_cn(df: pd.DataFrame) -> pd.DataFrame:
     """Add subsector (申万 Level-2 industry) for CN A-share universe."""
     try:
         import akshare as ak
-        sw = ak.stock_board_industry_name_em()  # cols: 板块名称, 板块代码
+        sw = call_with_timeout(ak.stock_board_industry_name_em, timeout=bulk_timeout())
         # Get constituent stocks for each SW industry board
         industry_map = {}
         for _, row in sw.iterrows():
             board = row.get("板块名称", "")
             try:
-                stocks = ak.stock_board_industry_cons_em(symbol=board)
+                stocks = call_with_timeout(ak.stock_board_industry_cons_em, symbol=board)
                 if stocks is not None and not stocks.empty:
                     code_col = next((c for c in ["代码", "股票代码", "code"] if c in stocks.columns), None)
                     if code_col:
@@ -425,7 +426,7 @@ class DataAgent(BaseAgent):
             try:
                 with yf_limiter:
                     t = yf.Ticker(idx["symbol"])
-                    h = t.history(period="60d")
+                    h = call_with_timeout(t.history, period="60d")
                 if h.empty:
                     continue
                 h = h.reset_index()
@@ -466,7 +467,7 @@ class DataAgent(BaseAgent):
             if not ak_code:
                 continue
             try:
-                df = ak.stock_zh_index_daily(symbol=ak_code)
+                df = call_with_timeout(ak.stock_zh_index_daily, symbol=ak_code)
                 df["date"] = pd.to_datetime(df["date"])
                 df = df.tail(60)  # keep last 60 trading days
                 df["symbol"] = symbol

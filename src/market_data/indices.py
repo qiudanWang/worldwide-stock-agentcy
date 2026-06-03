@@ -6,10 +6,13 @@ import pandas as pd
 from src.common.config import load_yaml, get_data_path
 from src.common.logger import get_logger
 from src.common.rate_limiter import yf_limiter
+from src.common.timeout import call_with_timeout
+from src.common.tracing import observe
 
 log = get_logger("market.indices")
 
 
+@observe(name="_load_prev_close_lookup", type="tool")
 def _load_prev_close_lookup():
     """Build {symbol: prev_close} from stored indices.parquet files as fallback."""
     lookup = {}
@@ -34,6 +37,7 @@ def _load_prev_close_lookup():
     return lookup
 
 
+@observe(name="_get_all_indices", type="tool")
 def _get_all_indices():
     """Build index list from markets.yaml config."""
     try:
@@ -50,6 +54,7 @@ def _get_all_indices():
     return indices_by_market
 
 
+@observe(name="fetch_indices", type="tool")
 def fetch_indices(markets=None):
     """Fetch latest index values and daily change.
 
@@ -70,7 +75,7 @@ def fetch_indices(markets=None):
             try:
                 with yf_limiter:
                     t = yf.Ticker(idx["symbol"])
-                    h = t.history(period="5d")
+                    h = call_with_timeout(t.history, period="5d")
                 if h.empty:
                     continue
                 close = h["Close"].iloc[-1]

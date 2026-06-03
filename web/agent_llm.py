@@ -7,7 +7,10 @@ from datetime import datetime
 
 import pandas as pd
 
+from src.common.tracing import observe
 
+
+@observe(name="_load_parquet", type="tool")
 def _load_parquet(path, max_rows=200):
     """Load parquet, return truncated DataFrame."""
     try:
@@ -17,6 +20,7 @@ def _load_parquet(path, max_rows=200):
         return pd.DataFrame()
 
 
+@observe(name="_load_json", type="tool")
 def _load_json(path):
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -25,6 +29,7 @@ def _load_json(path):
         return {}
 
 
+@observe(name="_df_to_text", type="span")
 def _df_to_text(df, max_rows=50):
     """Convert DataFrame to compact CSV-style text for LLM context."""
     if df.empty:
@@ -35,6 +40,7 @@ def _df_to_text(df, max_rows=50):
 
 # ── Data loaders per agent type ──────────────────────────────────────
 
+@observe(name="_name_lookup", type="tool")
 def _name_lookup(base):
     """Load ticker→name mapping from universe (full, not truncated)."""
     try:
@@ -46,6 +52,7 @@ def _name_lookup(base):
     return pd.DataFrame(columns=["ticker", "name"])
 
 
+@observe(name="_merge_names", type="span")
 def _merge_names(df, names):
     """Merge name column into df from universe lookup."""
     if names.empty or "name" in df.columns:
@@ -53,6 +60,7 @@ def _merge_names(df, names):
     return df.merge(names, on="ticker", how="left")
 
 
+@observe(name="_latest_per_ticker", type="span")
 def _latest_per_ticker(df):
     """Keep only the latest date row per ticker."""
     if "date" in df.columns and "ticker" in df.columns:
@@ -60,6 +68,7 @@ def _latest_per_ticker(df):
     return df
 
 
+@observe(name="_load_data_context", type="tool")
 def _load_data_context(market, data_dir):
     """Load all data relevant to the Data Agent."""
     base = os.path.join(data_dir, "markets", market)
@@ -106,6 +115,7 @@ def _load_data_context(market, data_dir):
     return "\n\n".join(sections) if sections else "No data available yet. Run the pipeline first."
 
 
+@observe(name="_load_news_context", type="tool")
 def _load_news_context(market, data_dir):
     """Load all data relevant to the News Agent."""
     base = os.path.join(data_dir, "markets", market)
@@ -127,6 +137,7 @@ def _load_news_context(market, data_dir):
     return "\n\n".join(sections) if sections else "No news data yet. Run the pipeline first."
 
 
+@observe(name="_load_signal_context", type="tool")
 def _load_signal_context(market, data_dir):
     """Load all data relevant to the Signal Agent (data + news + alerts)."""
     base = os.path.join(data_dir, "markets", market)
@@ -177,6 +188,7 @@ def _load_signal_context(market, data_dir):
     return "\n\n".join(sections) if sections else "No data yet. Run the pipeline first."
 
 
+@observe(name="_latest_daily_parquet", type="tool")
 def _latest_daily_parquet(base):
     """Return one row per ticker (most recent date with valid close) with computed return signals.
 
@@ -223,6 +235,7 @@ def _latest_daily_parquet(base):
         return pd.DataFrame()
 
 
+@observe(name="_load_ticker_context", type="tool")
 def _load_ticker_context(ticker: str, market: str, data_dir: str) -> str:
     """Focused context for a single ticker — used when question is about one company.
     Much smaller than _load_market_context so the whole token budget goes to this stock.
@@ -306,6 +319,7 @@ def _load_ticker_context(ticker: str, market: str, data_dir: str) -> str:
     return "\n\n".join(sections) if sections else _load_data_context(market, data_dir)
 
 
+@observe(name="_load_market_context", type="tool")
 def _load_market_context(market, data_dir):
     """Load unified context combining data+news+signal for a market agent."""
     base = os.path.join(data_dir, "markets", market)
@@ -378,6 +392,7 @@ def _load_market_context(market, data_dir):
     return "\n\n".join(sections) if sections else "No data available yet. Run the pipeline first."
 
 
+@observe(name="_load_global_context", type="tool")
 def _load_global_context(data_dir):
     """Load all data relevant to the Global Strategist.
 
@@ -600,6 +615,7 @@ TOOL_REGISTRY = {
 TOOLS = {k: v["description"] for k, v in TOOL_REGISTRY.items()}
 
 
+@observe(name="_registry_for_llm", type="span")
 def _registry_for_llm() -> str:
     """Format TOOL_REGISTRY as a compact string for LLM prompts."""
     lines = []
@@ -619,6 +635,7 @@ def _registry_for_llm() -> str:
 
 # ── Two-phase planner ─────────────────────────────────────────────────
 
+@observe(name="_call_llm", type="llm")
 def _call_llm(system, history, message, max_tokens=None):
     """Unified LLM call. Reads provider/api_key from config — no need to pass them around."""
     provider, api_key = get_llm_provider()
@@ -627,6 +644,7 @@ def _call_llm(system, history, message, max_tokens=None):
     return _call_openai(api_key, system, history, message, max_tokens)
 
 
+@observe(name="_plan_message", type="llm")
 def _plan_message(message: str, market, agent_type: str,
                   chat_history: list = None) -> dict:
     """Phase 1: LLM understands the question and produces a structured execution plan.
@@ -712,6 +730,7 @@ Rules:
     return {}
 
 
+@observe(name="_extract_peer_names_llm", type="llm")
 def _extract_peer_names_llm(text: str) -> list[str]:
     """Use LLM to extract company names from a step output for use in chained queries."""
     prompt = (
@@ -728,6 +747,7 @@ def _extract_peer_names_llm(text: str) -> list[str]:
         return []
 
 
+@observe(name="_execute_plan", type="span")
 def _execute_plan(plan: dict, tickers: list, market, agent_type: str,
                   data_dir: str, message: str) -> dict:
     """Phase 2: Execute plan steps. Independent steps (no depends_on) run in parallel;
@@ -920,6 +940,7 @@ def _execute_plan(plan: dict, tickers: list, market, agent_type: str,
     return tool_results
 
 
+@observe(name="_cn_peer_financials", type="tool")
 def _cn_peer_financials(peer_tickers: list, anchor_ticker: str, data_dir: str) -> str:
     """Fetch revenue/profit for CN A-share peers using akshare + local universe names.
 
@@ -984,6 +1005,7 @@ _EXTRACT_TRIGGERS = {
 }
 
 
+@observe(name="_clean_web_text", type="span")
 def _clean_web_text(text: str) -> str:
     """Step 1 of extraction: remove noise from raw web content.
 
@@ -1012,6 +1034,7 @@ def _clean_web_text(text: str) -> str:
     return text.strip()
 
 
+@observe(name="_extract_financials", type="llm")
 def _extract_financials(tool_results: dict, companies_hint: list,
                         message: str) -> str:
     """Relevance-filtered extractor: clean noise → LLM extracts only content relevant to the question.
@@ -1062,6 +1085,7 @@ Instructions:
         return ""
 
 
+@observe(name="_fetch_url", type="tool")
 def _fetch_url(url: str, max_chars: int = 1500) -> str:
     """Fetch and extract readable text from a specific URL (e.g. a news article)."""
     try:
@@ -1092,6 +1116,7 @@ _DDG_GARBAGE_DOMAINS = {
     "suoxinkj.com", "chinairn.com", "aiqicha.baidu.com",
 }
 
+@observe(name="_web_search", type="tool")
 def _web_search(query: str, max_results: int = 6, body_chars: int = 0,
                 region: str = "wt-wt") -> str:
     """Search the web via DuckDuckGo. Returns compact text for LLM context.
@@ -1106,23 +1131,31 @@ def _web_search(query: str, max_results: int = 6, body_chars: int = 0,
             from ddgs import DDGS
         except ImportError:
             from duckduckgo_search import DDGS
-        results = []
-        with DDGS() as ddgs:
-            for r in ddgs.text(query, region=region, max_results=max_results):
-                title = r.get("title", "")
-                body  = r.get("body", "")
-                if body_chars > 0:
-                    body = body[:body_chars]
-                href  = r.get("href", "")
-                # Skip garbage domains
-                m = _re.match(r'https?://(?:www\.)?([^/]+)', href)
-                domain = m.group(1) if m else ""
-                if any(domain == g or domain.endswith("." + g) for g in _DDG_GARBAGE_DOMAINS):
-                    continue
-                results.append(f"• {title}\n  {body}\n  {href}")
+        def _do_search():
+            results = []
+            with DDGS() as ddgs:
+                for r in ddgs.text(query, region=region, max_results=max_results):
+                    title = r.get("title", "")
+                    body  = r.get("body", "")
+                    if body_chars > 0:
+                        body = body[:body_chars]
+                    href  = r.get("href", "")
+                    m = _re.match(r'https?://(?:www\.)?([^/]+)', href)
+                    domain = m.group(1) if m else ""
+                    if any(domain == g or domain.endswith("." + g) for g in _DDG_GARBAGE_DOMAINS):
+                        continue
+                    results.append(f"• {title}\n  {body}\n  {href}")
+            return results
+
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            from src.common.timeout import default_timeout
+            results = ex.submit(_do_search).result(timeout=default_timeout())
         if not results:
             return "(no web results)"
         return f"WEB SEARCH: {query!r}\n" + "\n\n".join(results)
+    except concurrent.futures.TimeoutError:
+        return "(web search timed out)"
     except Exception as e:
         return f"(web search failed: {e})"
 
@@ -1138,6 +1171,7 @@ _SOURCE_BLOCKLIST = {
 }
 
 
+@observe(name="_extract_sources", type="span")
 def _extract_sources(web_result: str) -> str:
     """Extract source URLs and titles from _web_search output. Returns a markdown footer.
     Filters out obviously irrelevant sources (social media, tech company homepages, etc.)."""
@@ -1176,6 +1210,7 @@ _MARKET_YF_SUFFIX = {
 }
 
 
+@observe(name="_apply_market_suffix", type="span")
 def _apply_market_suffix(ticker: str, market: str | None) -> str:
     """Append yfinance exchange suffix if the ticker looks bare (no dot yet)."""
     if not market or "." in ticker:
@@ -1184,6 +1219,7 @@ def _apply_market_suffix(ticker: str, market: str | None) -> str:
     return ticker + suffix if suffix else ticker
 
 
+@observe(name="_build_macro_search_query", type="span")
 def _build_macro_search_query(message: str, market: str | None) -> str:
     """Convert a potentially Chinese/mixed financial question into a clean English search query.
 
@@ -1236,6 +1272,7 @@ def _build_macro_search_query(message: str, market: str | None) -> str:
     return query if len(query) > 10 else f"{market_prefix} outlook 2025"
 
 
+@observe(name="_run_openbb_tools", type="tool")
 def _run_openbb_tools(tools, tickers, market, data_dir, message=""):
     """Run OpenBB tools in parallel. Returns dict of tool_name → result text."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -1329,6 +1366,7 @@ Data available: capital flows by market, macro indicators (rates, commodities, V
 
 # ── Main LLM chat function ──────────────────────────────────────────
 
+@observe(name="_load_llm_config", type="span")
 def _load_llm_config():
     """Load LLM config from data/llm_config.json."""
     try:
@@ -1338,6 +1376,7 @@ def _load_llm_config():
     except Exception:
         return {}
 
+@observe(name="get_llm_provider", type="span")
 def get_llm_provider():
     """Returns ("openai", api_key) using config file, or (None, None) if not configured."""
     cfg = _load_llm_config()
@@ -1347,6 +1386,7 @@ def get_llm_provider():
     return None, None
 
 
+@observe(name="_resolve_cn_name_to_ticker", type="span")
 def _resolve_cn_name_to_ticker(name: str, data_dir: str) -> str | None:
     """Look up a company name in the CN A-share universe and return its 6-digit ticker."""
     import re as _re
@@ -1413,6 +1453,7 @@ _CN_NAME_ALIASES: dict[str, tuple[str, str]] = {
 }
 
 
+@observe(name="_find_company_in_market", type="span")
 def _find_company_in_market(name: str, market: str, data_dir: str) -> str | None:
     """Look up a company name in a single market's universe. Returns ticker or None."""
     try:
@@ -1435,6 +1476,7 @@ def _find_company_in_market(name: str, market: str, data_dir: str) -> str | None
     return None
 
 
+@observe(name="_find_company_in_markets", type="span")
 def _find_company_in_markets(name: str, data_dir: str) -> tuple[str, str] | tuple[None, None]:
     """Search all market universes for a company name. Returns (ticker, market) or (None, None)."""
     _MARKET_LABELS = {
@@ -1463,6 +1505,7 @@ def _find_company_in_markets(name: str, data_dir: str) -> tuple[str, str] | tupl
     return None, None
 
 
+@observe(name="_web_to_local_enrichment", type="tool")
 def _web_to_local_enrichment(web_result: str, user_question: str,
                               data_dir: str, market: str) -> str:
     """
@@ -1587,6 +1630,7 @@ def _web_to_local_enrichment(web_result: str, user_question: str,
     return "\n\n".join(parts) if parts else ""
 
 
+@observe(name="agent_chat", type="llm")
 def agent_chat(agent_type, market, message, data_dir, chat_history=None,
                language=None, context=None):
     """
@@ -1885,6 +1929,7 @@ def agent_chat(agent_type, market, message, data_dir, chat_history=None,
         return f"(error: {e})", context
 
 
+@observe(name="_call_anthropic", type="llm")
 def _call_anthropic(api_key, system, history, message, max_tokens=8096):
     """Call Anthropic Claude API."""
     import anthropic
@@ -1917,6 +1962,7 @@ def _call_anthropic(api_key, system, history, message, max_tokens=8096):
         raise
 
 
+@observe(name="_call_openai", type="llm")
 def _call_openai(api_key, system, history, message, max_tokens=None):
     """Call OpenAI-compatible API using config file settings."""
     from openai import OpenAI
@@ -1925,7 +1971,8 @@ def _call_openai(api_key, system, history, message, max_tokens=None):
     base_url = cfg.get("base_url", "https://api.openai.com/v1") or "https://api.openai.com/v1"
     model = cfg.get("model", "gpt-4o-mini") or "gpt-4o-mini"
     import httpx
-    client = OpenAI(api_key=key, base_url=base_url, http_client=httpx.Client(verify=False))
+    from src.common.timeout import llm_timeout
+    client = OpenAI(api_key=key, base_url=base_url, http_client=httpx.Client(verify=False, timeout=llm_timeout()))
 
     messages = [{"role": "system", "content": system}]
     messages.extend(history)
@@ -1959,6 +2006,7 @@ _ta_instance = None
 _openai_patched = False  # reset each server start so patch is always applied fresh
 
 
+@observe(name="_patch_openai_context_truncation", type="span")
 def _patch_openai_context_truncation(model_token_limit: int = 8192, max_completion_tokens: int = 1500):
     """Monkey-patch openai.Completions.create to ensure input + output never exceeds
     the model's context window.
@@ -2019,6 +2067,7 @@ def _patch_openai_context_truncation(model_token_limit: int = 8192, max_completi
         pass
 
 
+@observe(name="_get_trading_agents", type="span")
 def _get_trading_agents():
     """Lazy-init TradingAgents using the user's configured LLM key."""
     global _ta_instance
@@ -2064,6 +2113,7 @@ def _get_trading_agents():
         return None
 
 
+@observe(name="_local_cn_supplement", type="tool")
 def _local_cn_supplement(ticker: str) -> str:
     """Build a local-data supplement section for a CN A-share ticker.
 
@@ -2158,6 +2208,7 @@ def _local_cn_supplement(ticker: str) -> str:
         return ""
 
 
+@observe(name="trading_agents_analyze", type="agent")
 def trading_agents_analyze(ticker, date=None):
     """Run TradingAgents multi-agent analysis on a single ticker.
 

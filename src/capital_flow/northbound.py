@@ -2,10 +2,13 @@ import akshare as ak
 import pandas as pd
 from src.common.config import get_data_path
 from src.common.logger import get_logger
+from src.common.timeout import call_with_timeout
+from src.common.tracing import observe
 
 log = get_logger("capital.northbound")
 
 
+@observe(name="fetch_northbound_flow", type="tool")
 def fetch_northbound_flow():
     """Fetch daily northbound (北向资金) net flow data.
 
@@ -19,7 +22,7 @@ def fetch_northbound_flow():
     frames = []
     for symbol in ("沪股通", "深股通"):
         try:
-            df = ak.stock_hsgt_hist_em(symbol=symbol)
+            df = call_with_timeout(ak.stock_hsgt_hist_em, symbol=symbol)
             if df is None or df.empty:
                 continue
             flow_col = "当日成交净买额"
@@ -53,10 +56,11 @@ def fetch_northbound_flow():
     return combined
 
 
+@observe(name="fetch_northbound_holdings", type="tool")
 def fetch_northbound_holdings():
     """Fetch northbound holding data for individual stocks."""
     try:
-        df = ak.stock_hsgt_hold_stock_em(market="北向", indicator="今日排行")
+        df = call_with_timeout(ak.stock_hsgt_hold_stock_em, market="北向", indicator="今日排行")
         if df is None or df.empty:
             return pd.DataFrame()
 
@@ -76,6 +80,7 @@ def fetch_northbound_holdings():
         return pd.DataFrame()
 
 
+@observe(name="get_tech_northbound_changes", type="tool")
 def get_tech_northbound_changes(holdings_df, tech_tickers):
     """Filter northbound holdings to tech universe only."""
     if holdings_df.empty:

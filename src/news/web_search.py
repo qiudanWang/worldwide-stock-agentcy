@@ -1,11 +1,15 @@
 """Web search for stock news via DuckDuckGo (no API key required)."""
 
 import time
+import concurrent.futures
 from src.common.logger import get_logger
+from src.common.timeout import default_timeout
+from src.common.tracing import observe
 
 log = get_logger("news.web_search")
 
 
+@observe(name="search_stock_news", type="tool")
 def search_stock_news(ticker: str, company_name: str = "", market: str = "",
                       max_results: int = 5) -> list[dict]:
     """Search DuckDuckGo for recent news about a stock.
@@ -34,7 +38,7 @@ def search_stock_news(ticker: str, company_name: str = "", market: str = "",
     else:
         query = f"{query} {ticker} stock news"
 
-    try:
+    def _do_search():
         results = []
         with DDGS() as ddgs:
             for r in ddgs.news(query, max_results=max_results):
@@ -48,11 +52,20 @@ def search_stock_news(ticker: str, company_name: str = "", market: str = "",
                     "source": "web_search",
                 })
         return results
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(_do_search)
+            return fut.result(timeout=default_timeout())
+    except concurrent.futures.TimeoutError:
+        log.warning(f"Web search timeout for {ticker}, skipping")
+        return []
     except Exception as e:
         log.warning(f"Web search failed for {ticker}: {e}")
         return []
 
 
+@observe(name="search_top_movers_news", type="tool")
 def search_top_movers_news(movers: list[dict], max_per_stock: int = 3) -> list[dict]:
     """Search news for a list of top movers.
 

@@ -4,6 +4,7 @@ import akshare as ak
 import yfinance as yf
 import pandas as pd
 from src.common.logger import get_logger
+from src.common.timeout import call_with_timeout, bulk_timeout
 from src.common.tracing import observe
 
 log = get_logger("market.cap")
@@ -21,7 +22,7 @@ def fetch_cn_market_cap_batch(tickers):
         if i > 0 and i % 50 == 0:
             log.info(f"  Market cap progress: {i}/{len(tickers)}")
         try:
-            df = ak.stock_individual_info_em(symbol=ticker)
+            df = call_with_timeout(ak.stock_individual_info_em, symbol=ticker)
             cap_row = df[df["item"] == "总市值"]
             if not cap_row.empty:
                 cap = float(cap_row["value"].iloc[0])
@@ -46,7 +47,7 @@ def fetch_cn_market_cap_spot():
     """
     try:
         log.info("Fetching CN spot data for market cap...")
-        df = ak.stock_zh_a_spot_em()
+        df = call_with_timeout(ak.stock_zh_a_spot_em, timeout=bulk_timeout())
         df = df[["代码", "总市值"]].copy()
         df.columns = ["ticker", "market_cap"]
         df["market_cap"] = pd.to_numeric(df["market_cap"], errors="coerce")
@@ -73,7 +74,7 @@ def fetch_cn_market_cap_yf(tickers):
         try:
             with yf_limiter:
                 try:
-                    fi = yf.Ticker(symbol).fast_info
+                    fi = call_with_timeout(lambda: yf.Ticker(symbol).fast_info)
                     cap = getattr(fi, "market_cap", None)
                 except KeyError:
                     cap = None
@@ -100,7 +101,7 @@ def fetch_us_market_cap(tickers):
     rows = []
     for ticker in tickers:
         try:
-            info = yf.Ticker(ticker).info
+            info = call_with_timeout(lambda: yf.Ticker(ticker).info)
             cap = info.get("marketCap", None)
             rows.append({"ticker": ticker, "market_cap": cap})
         except Exception as e:

@@ -4,7 +4,10 @@ Called by DataAgent (weekly refresh) and as a live fallback.
 Saves data/markets/{MARKET}/fundamentals.parquet.
 """
 import time
+import concurrent.futures
 import pandas as pd
+from src.common.timeout import default_timeout
+from src.common.tracing import observe
 
 try:
     from src.common.logger import get_logger
@@ -34,6 +37,7 @@ _WANTED_INFO = [
 ]
 
 
+@observe(name="_fetch_one", type="tool")
 def _fetch_one(yf_ticker: str) -> dict:
     """Fetch fundamentals for a single yfinance symbol. Returns {} on failure."""
     try:
@@ -89,6 +93,7 @@ def _fetch_one(yf_ticker: str) -> dict:
         return {}
 
 
+@observe(name="fetch_yf_fundamentals_batch", type="tool")
 def fetch_yf_fundamentals_batch(tickers: list, market: str,
                                  delay: float = 0.4, limit: int = 60) -> pd.DataFrame:
     """Fetch fundamentals for up to `limit` tickers in a market.
@@ -103,7 +108,15 @@ def fetch_yf_fundamentals_batch(tickers: list, market: str,
     for i, ticker in enumerate(tickers):
         yf_ticker = ticker if (not suffix or str(ticker).endswith(suffix)) \
                     else str(ticker) + suffix
-        row = _fetch_one(yf_ticker)
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                fut = ex.submit(_fetch_one, yf_ticker)
+                row = fut.result(timeout=default_timeout())
+        except concurrent.futures.TimeoutError:
+            log.warning(f"  [{market}] Fundamentals timeout: {yf_ticker}, skipping")
+            row = {}
+        except Exception:
+            row = {}
         if row:
             row["ticker"] = ticker
             row["market"] = market
