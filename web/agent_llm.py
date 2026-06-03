@@ -1148,9 +1148,12 @@ def _web_search(query: str, max_results: int = 6, body_chars: int = 0,
             return results
 
         import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-            from src.common.timeout import default_timeout
-            results = ex.submit(_do_search).result(timeout=default_timeout())
+        from src.common.timeout import default_timeout
+        _ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        try:
+            results = _ex.submit(_do_search).result(timeout=default_timeout())
+        finally:
+            _ex.shutdown(wait=False)
         if not results:
             return "(no web results)"
         return f"WEB SEARCH: {query!r}\n" + "\n\n".join(results)

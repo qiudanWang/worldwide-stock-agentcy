@@ -114,9 +114,10 @@ def _fetch_akshare_single(ticker: str, start: str, end: str) -> pd.DataFrame:
     """Fetch CN A-share OHLCV via akshare."""
     try:
         import akshare as ak
-        df = ak.stock_zh_a_hist(
-            symbol=ticker,
-            period="daily",
+        from src.common.timeout import call_with_timeout
+        df = call_with_timeout(
+            ak.stock_zh_a_hist,
+            symbol=ticker, period="daily",
             start_date=start.replace("-", ""),
             end_date=end.replace("-", ""),
             adjust="hfq",

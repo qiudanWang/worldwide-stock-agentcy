@@ -1,6 +1,7 @@
 import yfinance as yf
 import pandas as pd
 from src.common.logger import get_logger
+from src.common.timeout import call_with_timeout
 from src.common.tracing import observe
 
 log = get_logger("financials.us")
@@ -11,7 +12,7 @@ def fetch_us_financials(ticker):
     """Fetch key financial indicators for a single US stock."""
     try:
         t = yf.Ticker(ticker)
-        info = t.info
+        info = call_with_timeout(lambda: t.info)
 
         revenue = info.get("totalRevenue")
         gross_profit = info.get("grossProfits")

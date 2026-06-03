@@ -14,6 +14,7 @@ Schema (long format — one row per ticker × period):
 import time
 import pandas as pd
 from src.common.logger import get_logger
+from src.common.timeout import call_with_timeout
 from src.common.tracing import observe
 
 log = get_logger("financials.yf")
@@ -138,12 +139,12 @@ def fetch_yf_financials_one(ticker: str, market: str) -> list:
         rows = []
 
         try:
-            rows.extend(_parse_income(t.financials, "annual", ticker, market))
+            rows.extend(_parse_income(call_with_timeout(lambda: t.financials), "annual", ticker, market))
         except Exception:
             pass
 
         try:
-            rows.extend(_parse_income(t.quarterly_financials, "quarterly", ticker, market))
+            rows.extend(_parse_income(call_with_timeout(lambda: t.quarterly_financials), "quarterly", ticker, market))
         except Exception:
             pass
 

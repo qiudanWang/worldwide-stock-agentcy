@@ -3,6 +3,7 @@
 import akshare as ak
 import pandas as pd
 from src.common.logger import get_logger
+from src.common.timeout import call_with_timeout, bulk_timeout
 from src.common.tracing import observe
 
 log = get_logger("macro.cn")
@@ -23,7 +24,7 @@ def _parse_month_col(series):
 def fetch_cn_cpi():
     """Fetch China CPI MoM data."""
     try:
-        df = ak.macro_china_cpi_monthly()
+        df = call_with_timeout(ak.macro_china_cpi_monthly, timeout=bulk_timeout())
         if df is None or df.empty:
             return pd.DataFrame()
         # New columns: 商品, 日期 (announcement date), 今值, 预测值, 前值
@@ -49,7 +50,7 @@ def fetch_cn_cpi():
 def fetch_cn_ppi():
     """Fetch China PPI data."""
     try:
-        df = ak.macro_china_ppi()
+        df = call_with_timeout(ak.macro_china_ppi, timeout=bulk_timeout())
         if df is None or df.empty:
             return pd.DataFrame()
         # Columns: 月份, 当月, 当月同比增长, 累计
@@ -76,7 +77,7 @@ def fetch_cn_ppi():
 def fetch_cn_pmi():
     """Fetch China PMI data."""
     try:
-        df = ak.macro_china_pmi()
+        df = call_with_timeout(ak.macro_china_pmi, timeout=bulk_timeout())
         if df is None or df.empty:
             return pd.DataFrame()
         # Columns: 月份, 制造业-指数, 制造业-同比增长, 非制造业-指数, ...
@@ -103,7 +104,7 @@ def fetch_cn_pmi():
 def fetch_cn_gdp():
     """Fetch China GDP growth data (quarterly)."""
     try:
-        df = ak.macro_china_gdp()
+        df = call_with_timeout(ak.macro_china_gdp, timeout=bulk_timeout())
         if df is None or df.empty:
             return pd.DataFrame()
         # Columns: 季度, 国内生产总值-同比增长, ...
@@ -143,7 +144,7 @@ def fetch_cn_house_price():
     Value = index - 100 to convert to percentage change.
     """
     try:
-        df = ak.macro_china_new_house_price()
+        df = call_with_timeout(ak.macro_china_new_house_price, timeout=bulk_timeout())
         if df is None or df.empty:
             return pd.DataFrame()
 
@@ -195,7 +196,7 @@ def fetch_cn_house_price_cities():
         c1 = cities_zh[i]
         c2 = cities_zh[i + 1] if i + 1 < len(cities_zh) else c1
         try:
-            df = ak.macro_china_new_house_price(city_first=c1, city_second=c2)
+            df = call_with_timeout(ak.macro_china_new_house_price, city_first=c1, city_second=c2, timeout=bulk_timeout())
             if df is None or df.empty:
                 continue
             df["date"] = pd.to_datetime(df["日期"], errors="coerce")

@@ -108,15 +108,16 @@ def fetch_yf_fundamentals_batch(tickers: list, market: str,
     for i, ticker in enumerate(tickers):
         yf_ticker = ticker if (not suffix or str(ticker).endswith(suffix)) \
                     else str(ticker) + suffix
+        ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                fut = ex.submit(_fetch_one, yf_ticker)
-                row = fut.result(timeout=default_timeout())
+            row = ex.submit(_fetch_one, yf_ticker).result(timeout=default_timeout())
         except concurrent.futures.TimeoutError:
             log.warning(f"  [{market}] Fundamentals timeout: {yf_ticker}, skipping")
             row = {}
         except Exception:
             row = {}
+        finally:
+            ex.shutdown(wait=False)
         if row:
             row["ticker"] = ticker
             row["market"] = market

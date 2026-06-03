@@ -53,16 +53,17 @@ def search_stock_news(ticker: str, company_name: str = "", market: str = "",
                 })
         return results
 
+    ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-            fut = ex.submit(_do_search)
-            return fut.result(timeout=default_timeout())
+        return ex.submit(_do_search).result(timeout=default_timeout())
     except concurrent.futures.TimeoutError:
         log.warning(f"Web search timeout for {ticker}, skipping")
         return []
     except Exception as e:
         log.warning(f"Web search failed for {ticker}: {e}")
         return []
+    finally:
+        ex.shutdown(wait=False)
 
 
 @observe(name="search_top_movers_news", type="tool")

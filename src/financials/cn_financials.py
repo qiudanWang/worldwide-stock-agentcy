@@ -12,6 +12,7 @@ Schema (long format — one row per ticker × period):
 
 import pandas as pd
 from src.common.logger import get_logger
+from src.common.timeout import call_with_timeout
 from src.common.tracing import observe
 
 log = get_logger("financials.cn")
@@ -56,7 +57,7 @@ def fetch_cn_financials_multiperiod(ticker: str) -> list:
     """
     try:
         import akshare as ak
-        df = ak.stock_financial_abstract_ths(symbol=ticker, indicator="按报告期")
+        df = call_with_timeout(ak.stock_financial_abstract_ths, symbol=ticker, indicator="按报告期")
         if df is None or df.empty:
             return []
 

@@ -27,17 +27,19 @@ def _yf_download_with_retry(symbols_str, period, max_retries=3, timeout=120, **k
 
     for attempt in range(max_retries):
         try:
-            with ThreadPoolExecutor(max_workers=1) as pool:
+            pool = ThreadPoolExecutor(max_workers=1)
+            try:
                 fut = pool.submit(_download)
                 try:
                     return fut.result(timeout=timeout)
                 except FutureTimeout:
                     log.warning(f"yf.download timed out after {timeout}s (attempt {attempt+1}/{max_retries})")
-                    fut.cancel()
                     if attempt == max_retries - 1:
                         return pd.DataFrame()
                     time.sleep(5)
                     continue
+            finally:
+                pool.shutdown(wait=False)
         except Exception as e:
             msg = str(e)
             if "rate" in msg.lower() or "429" in msg or "too many" in msg.lower():
