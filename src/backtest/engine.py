@@ -40,6 +40,7 @@ from src.backtest.metrics import compute_all
 from src.backtest.strategies import BaseStrategy, DEFAULTS, get_strategy, STRATEGIES
 from src.common.config import get_data_path
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("backtest.engine")
 
@@ -69,6 +70,7 @@ _MIN_BARS = {
 # Cache helpers
 # ---------------------------------------------------------------------------
 
+@observe(name="_make_cache_key", type="tool")
 def _make_cache_key(market: str, timeframe: str, universe_source: dict,
                     signal: dict, start_date: str, end_date: str) -> str:
     payload = {
@@ -82,10 +84,12 @@ def _make_cache_key(market: str, timeframe: str, universe_source: dict,
     return hashlib.md5(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:12]
 
 
+@observe(name="_result_path", type="tool")
 def _result_path(market: str, timeframe: str, cache_key: str) -> str:
     return get_data_path("backtest", "results", market, timeframe, f"{cache_key}.json")
 
 
+@observe(name="_is_fresh", type="tool")
 def _is_fresh(path: str, end_date: str = "") -> bool:
     if not os.path.exists(path):
         return False
@@ -102,6 +106,7 @@ def _is_fresh(path: str, end_date: str = "") -> bool:
     return age < timedelta(hours=CACHE_TTL_HOURS)
 
 
+@observe(name="load_cached_result", type="tool")
 def load_cached_result(market: str, timeframe: str, cache_key: str,
                        end_date: str = "") -> Optional[dict]:
     path = _result_path(market, timeframe, cache_key)
@@ -114,6 +119,7 @@ def load_cached_result(market: str, timeframe: str, cache_key: str,
     return None
 
 
+@observe(name="save_result", type="tool")
 def save_result(market: str, timeframe: str, cache_key: str, result: dict):
     path = _result_path(market, timeframe, cache_key)
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -125,6 +131,7 @@ def save_result(market: str, timeframe: str, cache_key: str, result: dict):
 # Universe loading
 # ---------------------------------------------------------------------------
 
+@observe(name="_load_universe_df", type="tool")
 def _load_universe_df(universe_source: dict, market: str) -> pd.DataFrame:
     """
     Load universe dataframe from universe_source spec.
@@ -150,6 +157,7 @@ def _load_universe_df(universe_source: dict, market: str) -> pd.DataFrame:
 # Signal dispatch
 # ---------------------------------------------------------------------------
 
+@observe(name="_build_signal_fn", type="tool")
 def _build_signal_fn(signal: dict, timeframe: str) -> Callable:
     """Return a callable select(universe_df, history, date) -> list[str]."""
     stype = signal.get("type", "builtin")
@@ -223,6 +231,7 @@ def _build_signal_fn(signal: dict, timeframe: str) -> Callable:
 # Rebalance date generation
 # ---------------------------------------------------------------------------
 
+@observe(name="_rebalance_dates", type="tool")
 def _rebalance_dates(all_dates: pd.DatetimeIndex, timeframe: str) -> list[pd.Timestamp]:
     """Return the subset of `all_dates` that are rebalance dates."""
     dates = sorted(all_dates)
@@ -250,42 +259,57 @@ def _rebalance_dates(all_dates: pd.DatetimeIndex, timeframe: str) -> list[pd.Tim
 # Yearly cohort mode
 # ---------------------------------------------------------------------------
 
-def _compute_equal_weight_return(
+@observe(name="_compute_yearly_cohort", type="tool")
+def _compute_yearly_cohort(
     tickers: list[str],
     history: dict[str, pd.DataFrame],
     start_date: str,
     end_date: str,
-) -> float:
+    name_map: dict[str, str],
+) -> tuple[float, list[dict]]:
     """
-    Compute equal-weight portfolio return from start_date to end_date.
-    Returns total return as a fraction (e.g. 0.15 = +15%).
+    Compute equal-weight portfolio return and trade records for one yearly cohort.
+    Returns (total_return_fraction, trades_list).
     """
     if not tickers:
-        return 0.0
+        return 0.0, []
 
     start_ts = pd.Timestamp(start_date)
     end_ts   = pd.Timestamp(end_date)
     returns  = []
+    trades   = []
 
     for tk in tickers:
         df = history.get(tk)
         if df is None or df.empty:
             continue
-        start_row = df[df["date"] >= start_ts]
-        end_row   = df[df["date"] <= end_ts]
-        if start_row.empty or end_row.empty:
+        dates_arr = df["date"].values
+        s_idx = int(dates_arr.searchsorted(start_ts.to_datetime64(), side="left"))
+        e_idx = int(dates_arr.searchsorted(end_ts.to_datetime64(), side="right"))
+        if s_idx >= len(dates_arr) or e_idx == 0:
             continue
-        entry = float(start_row.iloc[0]["open"]) if "open" in start_row.columns else float(start_row.iloc[0]["close"])
-        exit_ = float(end_row.iloc[-1]["close"])
+        start_row = df.iloc[s_idx]
+        end_row   = df.iloc[e_idx - 1]
+        entry = float(start_row["open"]) if "open" in df.columns else float(start_row["close"])
+        exit_ = float(end_row["close"])
         if entry > 0:
-            ret = (exit_ / entry) - 1 - COMMISSION * 2  # buy + sell
-            returns.append(ret)
+            pnl_pct = exit_ / entry - 1 - COMMISSION * 2
+            returns.append(pnl_pct)
+            trades.append({
+                "ticker":      tk,
+                "name":        name_map.get(tk, ""),
+                "entry_date":  str(start_row["date"])[:10],
+                "exit_date":   str(end_row["date"])[:10],
+                "entry_price": round(entry, 4),
+                "exit_price":  round(exit_, 4),
+                "pnl_pct":     round(pnl_pct, 6),
+            })
 
-    if not returns:
-        return 0.0
-    return float(np.mean(returns))
+    total_return = float(np.mean(returns)) if returns else 0.0
+    return total_return, trades
 
 
+@observe(name="_run_yearly_mode", type="tool")
 def _run_yearly_mode(
     market: str,
     universe_source: dict,
@@ -304,7 +328,7 @@ def _run_yearly_mode(
     equity_curve = []
     trades     = []
 
-    # Name lookup
+    # Load universe and name map once — reused for all years
     _uni = _load_universe_df(universe_source, market)
     _name_map: dict[str, str] = dict(zip(_uni["ticker"], _uni["name"])) if "name" in _uni.columns else {}
 
@@ -315,50 +339,23 @@ def _run_yearly_mode(
     equity_curve.append((f"{start_year}-01-01", round(equity, 2)))
 
     for i, year in enumerate(all_years):
-        as_of = f"{year}-01-01"
+        as_of    = f"{year}-01-01"
         year_end = f"{year}-12-31"
-
-        # Load universe for this year (same source for all years)
-        universe_df = _load_universe_df(universe_source, market)
-
-        # History up to as_of_date for signal generation
         as_of_ts = pd.Timestamp(as_of)
-        year_history = {tk: df[df["date"] < as_of_ts].copy() for tk, df in history.items()}
 
         # Signal: select stocks at start of year
+        # Pass full history — strategies filter by date internally
         try:
-            selected = signal_fn(universe_df, year_history, as_of_ts)
+            selected = signal_fn(_uni, history, as_of_ts)
         except Exception as e:
             log.warning(f"[engine/yearly] Signal failed for {year}: {e}")
             selected = []
 
-        # Compute return for this year
-        year_return = _compute_equal_weight_return(selected, history, as_of, year_end)
+        # Compute return and record trades in a single pass
+        year_return, year_trades = _compute_yearly_cohort(selected, history, as_of, year_end, _name_map)
         equity = equity * (1 + year_return)
         equity_curve.append((year_end, round(equity, 2)))
-
-        # Record cohort trades
-        for tk in selected:
-            df = history.get(tk)
-            if df is None or df.empty:
-                continue
-            start_row = df[df["date"] >= pd.Timestamp(as_of)]
-            end_row   = df[df["date"] <= pd.Timestamp(year_end)]
-            if start_row.empty or end_row.empty:
-                continue
-            entry_px = float(start_row.iloc[0]["open"]) if "open" in start_row.columns else float(start_row.iloc[0]["close"])
-            exit_px  = float(end_row.iloc[-1]["close"])
-            if entry_px > 0:
-                pnl_pct = exit_px / entry_px - 1 - COMMISSION * 2
-                trades.append({
-                    "ticker":      tk,
-                    "name":        _name_map.get(tk, ""),
-                    "entry_date":  str(start_row.iloc[0]["date"])[:10],
-                    "exit_date":   str(end_row.iloc[-1]["date"])[:10],
-                    "entry_price": round(entry_px, 4),
-                    "exit_price":  round(exit_px, 4),
-                    "pnl_pct":     round(pnl_pct, 6),
-                })
+        trades.extend(year_trades)
 
         cohorts.append({
             "year":    year,
@@ -381,6 +378,7 @@ def _run_yearly_mode(
 # Core engine
 # ---------------------------------------------------------------------------
 
+@observe(name="run_backtest", type="tool")
 def run_backtest(
     market: str,
     timeframe: str,
@@ -494,12 +492,13 @@ def run_backtest(
 
         rebal_dates = _rebalance_dates(signal_dates, timeframe)
 
-        # Build price lookups
-        close_map: dict[str, dict] = {}
-        open_map:  dict[str, dict] = {}
-        for tk, df in history.items():
-            close_map[tk] = dict(zip(df["date"], df["close"]))
-            open_map[tk]  = dict(zip(df["date"], df["open"]))
+        # Build price matrices (date-indexed, ticker columns) for O(1) .at[] lookups
+        close_px = pd.DataFrame(
+            {tk: df.set_index("date")["close"] for tk, df in history.items()}
+        ).sort_index().ffill()
+        open_px = pd.DataFrame(
+            {tk: df.set_index("date")["open"] for tk, df in history.items() if "open" in df.columns}
+        ).sort_index().ffill()
 
         # Name lookup for trades display
         name_map: dict[str, str] = {}
@@ -523,27 +522,28 @@ def run_backtest(
         done_steps  = 0
 
         for signal_date in rebal_dates:
-            future = [d for d in all_dates if d > signal_date]
-            exec_date = future[0] if future else None
+            _next_idx = all_dates.searchsorted(signal_date, side="right")
+            exec_date = all_dates[_next_idx] if _next_idx < len(all_dates) else None
 
             # ── Mark equity FIRST using current (old) portfolio ──────────────
-            # Use daily return (close / prev_close) to avoid compounding total
-            # return from cost basis every iteration.
+            # Vectorized MTM: use price matrix for all held tickers at once.
             if held_tickers:
+                row_date = signal_date if signal_date in close_px.index else None
+                if row_date is not None:
+                    curr_prices = close_px.loc[row_date, [tk for tk in held_tickers if tk in close_px.columns]]
+                else:
+                    curr_prices = pd.Series(dtype=float)
                 day_returns = []
                 for tk in held_tickers:
-                    curr_px = close_map.get(tk, {}).get(signal_date)
-                    if curr_px is None or curr_px <= 0:
-                        df = history.get(tk)
-                        if df is not None and not df.empty:
-                            row = df[df["date"] <= signal_date]
-                            curr_px = float(row["close"].iloc[-1]) if not row.empty else None
+                    curr_px = float(curr_prices.get(tk, np.nan)) if tk in curr_prices.index else np.nan
+                    if np.isnan(curr_px) or curr_px <= 0:
+                        curr_px = None
                     prev_px = held_prev_px.get(tk)
                     if curr_px and curr_px > 0 and prev_px and prev_px > 0:
                         day_returns.append(curr_px / prev_px)
-                        held_prev_px[tk] = curr_px   # advance reference for next bar
+                        held_prev_px[tk] = curr_px
                     elif curr_px and curr_px > 0:
-                        held_prev_px[tk] = curr_px   # first bar after entry: set reference
+                        held_prev_px[tk] = curr_px
                 if day_returns:
                     equity = equity * sum(day_returns) / len(day_returns)
             equity_curve.append((str(signal_date)[:10], round(equity, 2)))
@@ -553,19 +553,19 @@ def run_backtest(
                 continue
 
             # ── Generate signal ──────────────────────────────────────────────
-            # Pre-filter history to <= signal_date to prevent any look-ahead
-            # .copy() is critical — without it, pandas may return a view and any
-            # mutations inside select() would corrupt the master history dict,
-            # causing different stocks to be selected on every run.
-            signal_history = {tk: df[df["date"] <= signal_date].copy() for tk, df in history.items()}
-            new_tickers = signal_fn(universe_df, signal_history, signal_date)
+            # Pass history directly — strategies filter by date internally.
+            # Boolean indexing (df[mask]) always returns a copy in pandas,
+            # so there is no mutation risk on the master history dict.
+            new_tickers = signal_fn(universe_df, history, signal_date)
 
             # ── Close positions not in new portfolio (at exec_date open) ─────
             for tk in list(held_tickers):
                 if tk not in new_tickers:
-                    exit_px = open_map.get(tk, {}).get(exec_date)
-                    if exit_px is None or exit_px <= 0:
-                        exit_px = close_map.get(tk, {}).get(signal_date)
+                    exit_px = float(open_px.at[exec_date, tk]) if (exec_date in open_px.index and tk in open_px.columns) else None
+                    if exit_px is None or np.isnan(exit_px) or exit_px <= 0:
+                        exit_px = float(close_px.at[signal_date, tk]) if (signal_date in close_px.index and tk in close_px.columns) else None
+                    if exit_px is not None and np.isnan(exit_px):
+                        exit_px = None
                     if exit_px is None or exit_px <= 0:
                         held_tickers.remove(tk)
                         continue
@@ -595,7 +595,9 @@ def run_backtest(
             # ── Open new positions (at exec_date open) ───────────────────────
             for tk in new_tickers:
                 if tk not in held_tickers:
-                    entry_px = open_map.get(tk, {}).get(exec_date)
+                    entry_px = float(open_px.at[exec_date, tk]) if (exec_date in open_px.index and tk in open_px.columns) else None
+                    if entry_px is not None and np.isnan(entry_px):
+                        entry_px = None
                     if entry_px is None or entry_px <= 0:
                         continue
                     held_tickers.append(tk)
@@ -611,7 +613,8 @@ def run_backtest(
         if held_tickers and all_dates.size > 0:
             last_date = all_dates[-1]
             for tk in held_tickers:
-                exit_px  = close_map.get(tk, {}).get(last_date)
+                _v = float(close_px.at[last_date, tk]) if (last_date in close_px.index and tk in close_px.columns) else np.nan
+                exit_px = _v if not np.isnan(_v) else None
                 entry_px = held_cost.get(tk)
                 if not exit_px or exit_px <= 0:
                     log.debug(f"No exit price for {tk} at {last_date}, skipping close")

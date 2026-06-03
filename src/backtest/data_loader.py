@@ -10,6 +10,7 @@ import os
 import time
 import pandas as pd
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 
 from src.common.config import get_data_path
@@ -159,27 +160,45 @@ def load_market_history_batch(
 
     today = datetime.now().strftime("%Y-%m-%d")
 
+    fresh_tickers = []
+    stale_tickers = []
     for tk in tickers:
         cp = _cache_path(market, tk)
         if _is_cache_fresh(cp):
-            try:
-                result[tk] = pd.read_parquet(cp)
-            except Exception:
-                need_full.append(tk)
+            fresh_tickers.append((tk, cp))
         elif os.path.exists(cp):
-            try:
-                existing = pd.read_parquet(cp)
-                last_date = pd.to_datetime(existing["date"]).max()
-                delta_start = (last_date + timedelta(days=1)).strftime("%Y-%m-%d")
-                if delta_start >= today:
-                    # Already up to date — just reset TTL
-                    result[tk] = existing
-                    os.utime(cp, None)
-                else:
-                    need_delta.append((tk, delta_start, existing))
-            except Exception:
-                need_full.append(tk)
+            stale_tickers.append((tk, cp))
         else:
+            need_full.append(tk)
+
+    # Parallel reads for fresh cache files
+    def _read(tk, cp):
+        try:
+            return tk, pd.read_parquet(cp), True
+        except Exception:
+            return tk, None, False
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futs = {pool.submit(_read, tk, cp): tk for tk, cp in fresh_tickers}
+        for fut in as_completed(futs):
+            tk, df, ok = fut.result()
+            if ok:
+                result[tk] = df
+            else:
+                need_full.append(tk)
+
+    # Sequential reads for stale files (need last_date to compute delta)
+    for tk, cp in stale_tickers:
+        try:
+            existing = pd.read_parquet(cp)
+            last_date = pd.to_datetime(existing["date"]).max()
+            delta_start = (last_date + timedelta(days=1)).strftime("%Y-%m-%d")
+            if delta_start >= today:
+                result[tk] = existing
+                os.utime(cp, None)
+            else:
+                need_delta.append((tk, delta_start, existing))
+        except Exception:
             need_full.append(tk)
 
     log.info(
