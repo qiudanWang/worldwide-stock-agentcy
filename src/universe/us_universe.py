@@ -5,6 +5,7 @@ import requests
 import pandas as pd
 from src.common.config import load_yaml, get_data_path
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("universe.us")
 
@@ -31,6 +32,7 @@ TECH_INDUSTRY_KEYWORDS = [
 _EXCLUDE_SUFFIXES = ("-W", "-U", "-R", "-WS", "-WT", "-UN")
 
 
+@observe(name="_is_valid_ticker", type="tool")
 def _is_valid_ticker(symbol: str) -> bool:
     """Return True if the symbol looks like a common stock ticker."""
     if not symbol:
@@ -48,6 +50,7 @@ def _is_valid_ticker(symbol: str) -> bool:
     return True
 
 
+@observe(name="_matches_tech", type="tool")
 def _matches_tech(sector: str, industry: str) -> bool:
     """Return True if the stock belongs to a tech-related sector/industry."""
     sector = (sector or "").strip()
@@ -63,6 +66,7 @@ def _matches_tech(sector: str, industry: str) -> bool:
     return False
 
 
+@observe(name="_fetch_exchange", type="tool")
 def _fetch_exchange(exchange: str) -> list[dict]:
     """Fetch all stocks for a given exchange from the NASDAQ API."""
     params = {
@@ -83,6 +87,7 @@ def _fetch_exchange(exchange: str) -> list[dict]:
     return rows
 
 
+@observe(name="build_us_tech_universe", type="tool")
 def build_us_tech_universe() -> pd.DataFrame:
     """Fetch US tech stocks dynamically from NASDAQ and NYSE listings.
 
@@ -146,6 +151,7 @@ def build_us_tech_universe() -> pd.DataFrame:
     return result
 
 
+@observe(name="_fallback_watchlist", type="tool")
 def _fallback_watchlist() -> pd.DataFrame:
     """Load the static YAML watchlist as fallback."""
     from src.universe.yf_universe import build_yf_universe

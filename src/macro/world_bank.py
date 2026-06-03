@@ -4,12 +4,14 @@ import requests
 import pandas as pd
 from src.common.config import load_yaml
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("macro.worldbank")
 
 BASE_URL = "https://api.worldbank.org/v2"
 
 
+@observe(name="fetch_wb_indicator", type="tool")
 def fetch_wb_indicator(indicator, countries, start_year=None, end_year=None):
     """Fetch a World Bank indicator for a list of countries.
 
@@ -67,6 +69,7 @@ def fetch_wb_indicator(indicator, countries, start_year=None, end_year=None):
         return pd.DataFrame()
 
 
+@observe(name="fetch_all_wb_indicators", type="tool")
 def fetch_all_wb_indicators():
     """Fetch all World Bank indicators defined in macro_indicators.yaml.
 

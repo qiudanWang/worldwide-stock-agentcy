@@ -5,6 +5,7 @@ import requests
 import pandas as pd
 from src.common.config import get_data_path
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("universe.kr")
 
@@ -46,6 +47,7 @@ TECH_SECTOR_KEYWORDS = [
 ]
 
 
+@observe(name="_matches_kr_tech", type="tool")
 def _matches_kr_tech(sector: str) -> bool:
     """Return True if the sector string matches Korean tech keywords."""
     sector = (sector or "").strip()
@@ -57,12 +59,14 @@ def _matches_kr_tech(sector: str) -> bool:
     return False
 
 
+@observe(name="_format_ticker", type="tool")
 def _format_ticker(code: str) -> str:
     """Zero-pad a KRX stock code to 6 digits."""
     code = str(code).strip()
     return code.zfill(6)
 
 
+@observe(name="build_kr_tech_universe", type="tool")
 def build_kr_tech_universe() -> pd.DataFrame:
     """Fetch Korean tech stocks dynamically from KRX corporate listings.
 
@@ -165,6 +169,7 @@ def build_kr_tech_universe() -> pd.DataFrame:
     return result
 
 
+@observe(name="_fallback_watchlist", type="tool")
 def _fallback_watchlist() -> pd.DataFrame:
     """Load the static YAML watchlist as fallback."""
     from src.universe.yf_universe import build_yf_universe

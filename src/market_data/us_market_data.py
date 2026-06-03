@@ -2,10 +2,12 @@ import yfinance as yf
 import pandas as pd
 from src.common.config import get_settings
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("market.us")
 
 
+@observe(name="fetch_us_stock_history", type="tool")
 def fetch_us_stock_history(ticker, days=None):
     """Fetch daily OHLCV for a single US stock."""
     if days is None:
@@ -37,6 +39,7 @@ def fetch_us_stock_history(ticker, days=None):
         return pd.DataFrame()
 
 
+@observe(name="fetch_us_batch", type="tool")
 def fetch_us_batch(tickers):
     """Fetch history for a list of US tickers."""
     all_data = []

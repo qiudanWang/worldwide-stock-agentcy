@@ -3,10 +3,12 @@
 import yfinance as yf
 import pandas as pd
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("capital.etf")
 
 
+@observe(name="fetch_etf_flow_proxy", type="tool")
 def fetch_etf_flow_proxy(etf_symbol, market, days=60):
     """Estimate capital flows using country ETF volume as a proxy.
 

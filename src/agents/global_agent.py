@@ -9,6 +9,7 @@ from datetime import datetime
 from src.agents.base import BaseAgent, AgentResult
 from src.common.config import get_data_path, load_yaml
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("agent.global")
 
@@ -16,10 +17,12 @@ log = get_logger("agent.global")
 class GlobalAgent(BaseAgent):
     """Runs after all market agents. Produces cross-market analysis."""
 
+    @observe(name="GlobalAgent.__init__", type="span")
     def __init__(self, name="global", depends_on=None):
         super().__init__(name, agent_type="global", market=None,
                          depends_on=depends_on or [])
 
+    @observe(name="GlobalAgent.run", type="agent")
     def run(self) -> AgentResult:
         errors = []
         records = 0
@@ -144,6 +147,7 @@ class GlobalAgent(BaseAgent):
             errors=errors,
         )
 
+    @observe(name="GlobalAgent._merge_universes", type="tool")
     def _merge_universes(self):
         """Merge all market universes into a master universe."""
         markets_cfg = load_yaml("markets.yaml")["markets"]
@@ -167,6 +171,7 @@ class GlobalAgent(BaseAgent):
         log.info(f"Master universe: {len(master)} stocks from {len(all_dfs)} markets")
         return master
 
+    @observe(name="GlobalAgent._fetch_macro", type="tool")
     def _fetch_macro(self):
         """Fetch all macro indicators."""
         all_data = []
@@ -268,6 +273,7 @@ class GlobalAgent(BaseAgent):
         log.info(f"Macro data: {len(combined)} data points")
         return combined, macro_latest
 
+    @observe(name="GlobalAgent._compute_sector_performance", type="tool")
     def _compute_sector_performance(self):
         """Compute sector performance across all markets."""
         from src.analysis.sector_performance import compute_sector_performance
@@ -395,6 +401,7 @@ class GlobalAgent(BaseAgent):
         combined = pd.concat(all_latest, ignore_index=True)
         return compute_sector_performance(combined)
 
+    @observe(name="GlobalAgent._compute_correlations", type="tool")
     def _compute_correlations(self):
         """Compute cross-market index correlations."""
         from src.analysis.correlations import compute_index_correlations
@@ -416,6 +423,7 @@ class GlobalAgent(BaseAgent):
         combined = pd.concat(all_indices, ignore_index=True)
         return compute_index_correlations(combined)
 
+    @observe(name="GlobalAgent._fetch_geopolitical", type="tool")
     def _fetch_geopolitical(self):
         """Fetch geopolitical news context."""
         try:
@@ -425,6 +433,7 @@ class GlobalAgent(BaseAgent):
             log.warning(f"Failed to fetch geopolitical context: {e}")
             return {}
 
+    @observe(name="GlobalAgent._check_peer_alerts", type="tool")
     def _check_peer_alerts(self):
         """Check peer-relative alerts (CN vs US)."""
         today = datetime.now().strftime("%Y%m%d")
@@ -463,6 +472,7 @@ class GlobalAgent(BaseAgent):
 
         return alerts
 
+    @observe(name="GlobalAgent._generate_global_alerts", type="tool")
     def _generate_global_alerts(self, macro_latest, sector_perf, correlations):
         """Generate all global-level alerts."""
         today = datetime.now().strftime("%Y%m%d")
@@ -527,6 +537,7 @@ class GlobalAgent(BaseAgent):
         log.info(f"Global alerts: {len(alerts)} total")
         return alerts
 
+    @observe(name="GlobalAgent._check_cross_market_price_gap_alerts", type="tool")
     def _check_cross_market_price_gap_alerts(self):
         """Run price_alert and gap_alert checks across all markets.
 
@@ -612,6 +623,7 @@ class GlobalAgent(BaseAgent):
             )
         return alerts
 
+    @observe(name="GlobalAgent._collect_market_alerts", type="tool")
     def _collect_market_alerts(self):
         """Collect all per-market alerts into one list."""
         markets_cfg = load_yaml("markets.yaml")["markets"]

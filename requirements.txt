@@ -9,3 +9,4 @@ fredapi
 ddgs
 truststore
 openbb
+traceroot

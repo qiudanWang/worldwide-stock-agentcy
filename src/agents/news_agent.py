@@ -7,6 +7,7 @@ from src.agents.base import BaseAgent, AgentResult
 from src.common.config import get_data_path, get_settings
 from src.common.logger import get_logger
 from src.news.keyword_filter import filter_by_keywords, compute_news_counts
+from src.common.tracing import observe
 
 log = get_logger("agent.news")
 
@@ -14,11 +15,13 @@ log = get_logger("agent.news")
 class NewsAgent(BaseAgent):
     """Fetches company news and applies keyword filtering for a single market."""
 
+    @observe(name="NewsAgent.__init__", type="span")
     def __init__(self, name, market, market_config, depends_on=None):
         super().__init__(name, agent_type="news", market=market,
                          depends_on=depends_on)
         self.market_config = market_config
 
+    @observe(name="NewsAgent.run", type="agent")
     def run(self) -> AgentResult:
         market = self.market
         errors = []

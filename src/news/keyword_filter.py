@@ -1,10 +1,12 @@
 import pandas as pd
 from src.common.config import load_yaml
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("news.keyword")
 
 
+@observe(name="filter_by_keywords", type="span")
 def filter_by_keywords(news_df):
     """Filter news items that match configured keywords.
 
@@ -29,6 +31,7 @@ def filter_by_keywords(news_df):
     return news_df
 
 
+@observe(name="compute_news_counts", type="span")
 def compute_news_counts(news_df):
     """Compute per-ticker news counts.
 

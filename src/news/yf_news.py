@@ -4,10 +4,12 @@ import yfinance as yf
 import pandas as pd
 from datetime import datetime
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("news.yf")
 
 
+@observe(name="fetch_yf_news", type="tool")
 def fetch_yf_news(ticker, yf_symbol=None, market="US"):
     """Fetch recent news for a stock via yfinance.
 
@@ -56,6 +58,7 @@ def fetch_yf_news(ticker, yf_symbol=None, market="US"):
         return []
 
 
+@observe(name="fetch_yf_news_batch", type="tool")
 def fetch_yf_news_batch(tickers, market="US", ticker_suffix=""):
     """Fetch news for multiple tickers via yfinance.
 

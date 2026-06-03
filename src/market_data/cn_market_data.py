@@ -3,12 +3,14 @@ import yfinance as yf
 from datetime import datetime, timedelta
 from src.common.config import get_settings
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("market.cn")
 
 _BATCH_SIZE = 50  # yfinance handles batches well
 
 
+@observe(name="_ticker_to_yf", type="tool")
 def _ticker_to_yf(ticker: str) -> str:
     """Convert CN ticker to Yahoo Finance symbol.
 
@@ -23,6 +25,7 @@ def _ticker_to_yf(ticker: str) -> str:
     return ticker + ".SZ"  # 0xxxxx, 2xxxxx, 3xxxxx → Shenzhen
 
 
+@observe(name="fetch_cn_stock_history", type="tool")
 def fetch_cn_stock_history(ticker, days=None):
     """Fetch daily OHLCV for a single A-share stock via yfinance."""
     if days is None:
@@ -49,6 +52,7 @@ def fetch_cn_stock_history(ticker, days=None):
         return pd.DataFrame()
 
 
+@observe(name="fetch_cn_batch", type="tool")
 def fetch_cn_batch(tickers):
     """Fetch history for all CN tickers using yfinance batch downloads."""
     if not tickers:

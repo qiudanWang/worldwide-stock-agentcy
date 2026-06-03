@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from src.common.config import load_yaml
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("macro.fred")
 
@@ -17,6 +18,7 @@ except ImportError:
 import requests
 
 
+@observe(name="_fetch_fred_via_api", type="tool")
 def _fetch_fred_via_api(series_id, api_key, start_date=None):
     """Fetch a FRED series using the fredapi package."""
     fred = Fred(api_key=api_key)
@@ -29,6 +31,7 @@ def _fetch_fred_via_api(series_id, api_key, start_date=None):
     return df
 
 
+@observe(name="_fetch_fred_via_requests", type="tool")
 def _fetch_fred_via_requests(series_id, api_key, start_date=None):
     """Fetch a FRED series using raw HTTP requests."""
     url = "https://api.stlouisfed.org/fred/series/observations"
@@ -65,6 +68,7 @@ def _fetch_fred_via_requests(series_id, api_key, start_date=None):
         return pd.DataFrame()
 
 
+@observe(name="_fetch_fred_public_csv", type="tool")
 def _fetch_fred_public_csv(series_id, start_date=None):
     """Fetch a FRED series via public CSV endpoint (no API key required)."""
     from io import StringIO
@@ -87,6 +91,7 @@ def _fetch_fred_public_csv(series_id, start_date=None):
         return pd.DataFrame()
 
 
+@observe(name="fetch_fred_series", type="tool")
 def fetch_fred_series(series_id, api_key=None, days_back=365):
     """Fetch a single FRED series.
 
@@ -111,6 +116,7 @@ def fetch_fred_series(series_id, api_key=None, days_back=365):
         return _fetch_fred_via_requests(series_id, api_key, start_date)
 
 
+@observe(name="fetch_all_fred_series", type="tool")
 def fetch_all_fred_series(api_key=None):
     """Fetch all FRED series defined in macro_indicators.yaml.
 
@@ -140,6 +146,7 @@ def fetch_all_fred_series(api_key=None):
     return result
 
 
+@observe(name="compute_yield_curve", type="tool")
 def compute_yield_curve(fred_df):
     """Compute yield curve spread (10Y - 2Y) from FRED data.
 

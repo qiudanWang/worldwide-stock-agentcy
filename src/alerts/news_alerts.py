@@ -1,10 +1,12 @@
 import pandas as pd
 from src.common.config import load_yaml
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("alerts.news")
 
 
+@observe(name="check_news_alerts", type="tool")
 def check_news_alerts(news_counts_df):
     """Find stocks with unusual news activity."""
     rules = load_yaml("alert_rules.yaml")

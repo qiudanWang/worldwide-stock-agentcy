@@ -1,10 +1,12 @@
 import pandas as pd
 from src.common.config import load_yaml
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("alerts.volume")
 
 
+@observe(name="check_volume_alerts", type="tool")
 def check_volume_alerts(latest_signals):
     """Find stocks with volume spikes above threshold.
 

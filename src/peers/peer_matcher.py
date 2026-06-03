@@ -10,15 +10,18 @@ from itertools import combinations
 import pandas as pd
 from src.common.config import load_yaml, get_data_path
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("peers.matcher")
 
 
+@observe(name="load_company_tags", type="tool")
 def load_company_tags():
     """Load company tags from config."""
     return load_yaml("company_tags.yaml")
 
 
+@observe(name="jaccard_similarity", type="tool")
 def jaccard_similarity(set_a, set_b):
     """Compute Jaccard similarity between two sets."""
     if not set_a and not set_b:
@@ -28,6 +31,7 @@ def jaccard_similarity(set_a, set_b):
     return intersection / union if union > 0 else 0.0
 
 
+@observe(name="compute_tag_similarity", type="tool")
 def compute_tag_similarity(tags_a, tags_b):
     """Compute similarity between two companies based on tags.
 
@@ -51,6 +55,7 @@ def compute_tag_similarity(tags_a, tags_b):
     return round(score, 4)
 
 
+@observe(name="_build_company_list", type="tool")
 def _build_company_list(tags):
     """Convert tags dict to a list of (name, ticker, market, tags) tuples."""
     companies = []
@@ -61,6 +66,7 @@ def _build_company_list(tags):
     return companies
 
 
+@observe(name="_infer_market", type="tool")
 def _infer_market(ticker):
     """Infer market from ticker format (legacy fallback)."""
     if isinstance(ticker, str) and ticker.isdigit():
@@ -68,6 +74,7 @@ def _infer_market(ticker):
     return "US"
 
 
+@observe(name="build_peer_mapping", type="tool")
 def build_peer_mapping(top_k=5):
     """Build global peer mapping — for each company, find top-K peers across ALL markets.
 
@@ -133,6 +140,7 @@ def build_peer_mapping(top_k=5):
     return result
 
 
+@observe(name="build_global_peer_groups", type="tool")
 def build_global_peer_groups():
     """Build peer groups — one group per sub_sector that spans 2+ markets.
 
@@ -210,6 +218,7 @@ def build_global_peer_groups():
     return groups
 
 
+@observe(name="get_peers_for", type="tool")
 def get_peers_for(ticker_or_name, peer_mapping_df=None):
     """Look up peers for a given company (from any market).
 
@@ -237,6 +246,7 @@ def get_peers_for(ticker_or_name, peer_mapping_df=None):
     return peer_mapping_df[mask].sort_values("rank")
 
 
+@observe(name="_legacy_get_peers", type="tool")
 def _legacy_get_peers(ticker_or_name, legacy_df):
     """Handle legacy CN->US peer mapping format."""
     mask = (
@@ -248,6 +258,7 @@ def _legacy_get_peers(ticker_or_name, legacy_df):
     return legacy_df[mask].sort_values("rank" if "rank" in legacy_df.columns else "peer_score")
 
 
+@observe(name="get_cn_us_peers", type="tool")
 def get_cn_us_peers(peer_mapping_df=None):
     """Backward-compatible: get CN->US peer pairs only.
 
@@ -282,6 +293,7 @@ def get_cn_us_peers(peer_mapping_df=None):
 
 
 # Legacy aliases
+@observe(name="get_cn_for_us", type="tool")
 def get_cn_for_us(us_name_or_ticker, peer_mapping_df=None):
     """Look up which CN companies have a given US stock as a peer (legacy compat)."""
     cn_us = get_cn_us_peers(peer_mapping_df)

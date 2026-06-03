@@ -3,6 +3,7 @@
 import pandas as pd
 from src.common.config import get_data_path
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("common.stock_info")
 
@@ -48,6 +49,7 @@ US_STOCK_NAMES = {
 }
 
 
+@observe(name="get_cn_board", type="span")
 def get_cn_board(ticker):
     """Determine the board/exchange for a Chinese A-share ticker."""
     if ticker.startswith("300"):
@@ -64,6 +66,7 @@ def get_cn_board(ticker):
         return "A-Share"
 
 
+@observe(name="get_us_exchange", type="span")
 def get_us_exchange(ticker):
     """Determine the exchange for a US stock ticker."""
     nyse_tickers = {"BRK.B", "JPM", "V", "MA", "BAC", "WMT", "JNJ", "PG",
@@ -74,6 +77,7 @@ def get_us_exchange(ticker):
     return "NASDAQ"
 
 
+@observe(name="get_board", type="span")
 def get_board(ticker, market):
     """Get the board/exchange string for a ticker."""
     if market == "CN":
@@ -103,6 +107,7 @@ def get_board(ticker, market):
     return market
 
 
+@observe(name="get_stock_name", type="span")
 def get_stock_name(ticker, market):
     """Get the stock name for a ticker."""
     if market == "US":
@@ -111,6 +116,7 @@ def get_stock_name(ticker, market):
     return ticker
 
 
+@observe(name="load_name_lookup", type="tool")
 def load_name_lookup():
     """Load a ticker->name lookup dict from the universe master.
 
@@ -147,6 +153,7 @@ def load_name_lookup():
     return {}
 
 
+@observe(name="enrich_alert", type="tool")
 def enrich_alert(alert, name_lookup=None):
     """Add 'name' and 'board' fields to an alert dict."""
     ticker = alert.get("ticker", "")
@@ -163,6 +170,7 @@ def enrich_alert(alert, name_lookup=None):
     return alert
 
 
+@observe(name="enrich_alerts", type="tool")
 def enrich_alerts(alerts_list):
     """Add 'name' and 'board' fields to all alerts."""
     name_lookup = load_name_lookup()

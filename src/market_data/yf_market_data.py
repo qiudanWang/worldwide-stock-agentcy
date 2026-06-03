@@ -9,12 +9,14 @@ import yfinance as yf
 from src.common.config import get_settings
 from src.common.logger import get_logger
 from src.common.rate_limiter import yf_limiter
+from src.common.tracing import observe
 
 log = get_logger("market.yf")
 
 _BATCH_SIZE = 50
 
 
+@observe(name="_yf_download_with_retry", type="tool")
 def _yf_download_with_retry(symbols_str, period, max_retries=3, timeout=120, **kwargs):
     """yf.download with exponential backoff on rate limit errors and a hard timeout."""
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
@@ -47,6 +49,7 @@ def _yf_download_with_retry(symbols_str, period, max_retries=3, timeout=120, **k
     return pd.DataFrame()
 
 
+@observe(name="_build_yf_symbol", type="tool")
 def _build_yf_symbol(ticker: str, market: str) -> str:
     """Build the correct Yahoo Finance symbol for a given market."""
     if market == "HK":
@@ -56,6 +59,7 @@ def _build_yf_symbol(ticker: str, market: str) -> str:
     return ticker
 
 
+@observe(name="_parse_batch", type="tool")
 def _parse_batch(raw: pd.DataFrame, yf_syms: list, ticker_map: dict, market: str) -> list:
     """Parse a yfinance batch download result into a list of DataFrames."""
     results = []
@@ -102,6 +106,7 @@ def _parse_batch(raw: pd.DataFrame, yf_syms: list, ticker_map: dict, market: str
     return results
 
 
+@observe(name="fetch_yf_stock_history", type="tool")
 def fetch_yf_stock_history(ticker, yf_symbol=None, market="US", days=None):
     """Fetch daily OHLCV for a single stock via yfinance."""
     if days is None:
@@ -117,6 +122,7 @@ def fetch_yf_stock_history(ticker, yf_symbol=None, market="US", days=None):
         return pd.DataFrame()
 
 
+@observe(name="fetch_yf_batch", type="tool")
 def fetch_yf_batch(tickers, market="US", ticker_suffix="", days=None):
     """Fetch history for all tickers via yfinance batch downloads."""
     if not tickers:

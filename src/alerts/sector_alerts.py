@@ -2,10 +2,12 @@
 
 from src.common.config import load_yaml
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("alerts.sector")
 
 
+@observe(name="check_sector_rotation_alerts", type="tool")
 def check_sector_rotation_alerts(rotation_events):
     """Generate alerts from sector rotation events.
 
@@ -44,6 +46,7 @@ def check_sector_rotation_alerts(rotation_events):
     return alerts
 
 
+@observe(name="check_cross_market_alerts", type="tool")
 def check_cross_market_alerts(divergence_events):
     """Generate alerts from cross-market divergence events.
 
@@ -78,6 +81,7 @@ def check_cross_market_alerts(divergence_events):
     return alerts
 
 
+@observe(name="check_index_breakout_alerts", type="tool")
 def check_index_breakout_alerts(breakout_events):
     """Generate alerts from index breakout events.
 

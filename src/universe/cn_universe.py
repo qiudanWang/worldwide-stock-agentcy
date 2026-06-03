@@ -2,10 +2,12 @@ import akshare as ak
 import pandas as pd
 from src.common.config import load_yaml, get_data_path
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("universe.cn")
 
 
+@observe(name="build_cn_universe", type="tool")
 def build_cn_universe():
     """Fetch A-share tech stocks by industry from AKShare."""
     cfg = load_yaml("cn_industries.yaml")

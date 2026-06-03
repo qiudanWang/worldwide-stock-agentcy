@@ -12,6 +12,7 @@ Schema (long format — one row per ticker × period):
 
 import pandas as pd
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("financials.cn")
 
@@ -20,6 +21,7 @@ _PERIOD_SUFFIX = {
 }
 
 
+@observe(name="_safe_float", type="tool")
 def _safe_float(val, unit_suffix=""):
     """Parse a value that may carry a unit suffix like 亿, 万, or % sign."""
     try:
@@ -38,6 +40,7 @@ def _safe_float(val, unit_suffix=""):
         return None
 
 
+@observe(name="_period_type", type="tool")
 def _period_type(period_str: str) -> str:
     for suffix, ptype in _PERIOD_SUFFIX.items():
         if str(period_str).endswith(suffix):
@@ -45,6 +48,7 @@ def _period_type(period_str: str) -> str:
     return "unknown"
 
 
+@observe(name="fetch_cn_financials_multiperiod", type="tool")
 def fetch_cn_financials_multiperiod(ticker: str) -> list:
     """Fetch multi-period financials for a single CN A-share ticker.
 
@@ -104,6 +108,7 @@ def fetch_cn_financials_multiperiod(ticker: str) -> list:
         return []
 
 
+@observe(name="fetch_cn_financials_batch", type="tool")
 def fetch_cn_financials_batch(tickers: list, max_workers: int = 8) -> pd.DataFrame:
     """Fetch multi-period financials for a list of A-share tickers in parallel.
 
@@ -148,6 +153,7 @@ def fetch_cn_financials_batch(tickers: list, max_workers: int = 8) -> pd.DataFra
 
 
 # ── Backward-compat shim (used by old normalize_financials.py) ─────────────
+@observe(name="fetch_cn_financials", type="tool")
 def fetch_cn_financials(ticker):
     rows = fetch_cn_financials_multiperiod(ticker)
     if not rows:

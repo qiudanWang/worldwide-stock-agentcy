@@ -3,10 +3,12 @@
 import pandas as pd
 import numpy as np
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("analysis.corr")
 
 
+@observe(name="compute_index_correlations", type="tool")
 def compute_index_correlations(index_data, window=20):
     """Compute rolling correlation matrix between market indices.
 
@@ -83,6 +85,7 @@ def compute_index_correlations(index_data, window=20):
     return {"matrix": matrix, "lead_lag": lead_lag}
 
 
+@observe(name="compute_sector_index_correlation", type="tool")
 def compute_sector_index_correlation(sector_returns, index_returns, window=20):
     """Compute correlation between sector returns and home market index.
 

@@ -4,6 +4,7 @@ import requests
 import pandas as pd
 from src.common.config import get_data_path
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("universe.au")
 
@@ -41,6 +42,7 @@ TECH_SECTOR_KEYWORDS = [
 ]
 
 
+@observe(name="_matches_au_tech", type="tool")
 def _matches_au_tech(classification_group: str, industry_sector: str) -> bool:
     """Return True if the company belongs to a tech sector."""
     group = (classification_group or "").strip()
@@ -59,6 +61,7 @@ def _matches_au_tech(classification_group: str, industry_sector: str) -> bool:
     return False
 
 
+@observe(name="build_au_tech_universe", type="tool")
 def build_au_tech_universe() -> pd.DataFrame:
     """Fetch Australian tech stocks dynamically from ASX company directory.
 
@@ -160,6 +163,7 @@ def build_au_tech_universe() -> pd.DataFrame:
     return result
 
 
+@observe(name="_fallback_watchlist", type="tool")
 def _fallback_watchlist() -> pd.DataFrame:
     """Load the static YAML watchlist as fallback."""
     from src.universe.yf_universe import build_yf_universe

@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from src.common.config import get_data_path
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 _status_lock = threading.Lock()
 
@@ -35,6 +36,7 @@ class BaseAgent:
     depends_on: list = []
     schedule: str = "daily"
 
+    @observe(name="BaseAgent.__init__", type="span")
     def __init__(self, name: str, agent_type: str, market: str = None,
                  depends_on: list = None, force: bool = False):
         self.name = name
@@ -51,27 +53,33 @@ class BaseAgent:
             "errors": [],
         }
 
+    @observe(name="BaseAgent.should_run", type="span")
     def should_run(self) -> bool:
         """Check if the agent should run (not cached, etc)."""
         return True
 
+    @observe(name="BaseAgent.run", type="agent")
     def run(self) -> AgentResult:
         """Execute the agent. Subclasses must override."""
         raise NotImplementedError
 
+    @observe(name="BaseAgent.validate", type="span")
     def validate(self) -> bool:
         """Verify output integrity after run."""
         return True
 
+    @observe(name="BaseAgent.status", type="span")
     def status(self) -> dict:
         """Return current status dict."""
         return self._status.copy()
 
+    @observe(name="BaseAgent.update_status", type="span")
     def update_status(self, **kwargs):
         """Update status fields and write to shared status file."""
         self._status.update(kwargs)
         _update_agent_status(self.name, self._status)
 
+    @observe(name="BaseAgent.execute", type="agent")
     def execute(self, max_retries: int = 2, retry_delay: int = 30) -> AgentResult:
         """Full execution wrapper: status tracking, timing, error handling, and retry."""
         self.update_status(state="running", progress="Starting...")
@@ -150,6 +158,7 @@ class BaseAgent:
             )
 
 
+@observe(name="_update_agent_status", type="span")
 def _update_agent_status(agent_name: str, status: dict):
     """Update a single agent's entry in the shared agent_status.json file."""
     status_path = get_data_path("agent_status.json")
@@ -166,6 +175,7 @@ def _update_agent_status(agent_name: str, status: dict):
             json.dump(all_status, f, indent=2, default=str)
 
 
+@observe(name="update_pipeline_status", type="span")
 def update_pipeline_status(**kwargs):
     """Update the pipeline-level status in agent_status.json."""
     status_path = get_data_path("agent_status.json")

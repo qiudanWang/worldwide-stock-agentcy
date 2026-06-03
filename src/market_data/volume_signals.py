@@ -1,9 +1,11 @@
 import pandas as pd
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("market.volume")
 
 
+@observe(name="compute_volume_signals", type="tool")
 def compute_volume_signals(market_data):
     """Compute volume ratio and return signals for each ticker.
 
@@ -35,6 +37,7 @@ def compute_volume_signals(market_data):
     return combined
 
 
+@observe(name="get_latest_signals", type="tool")
 def get_latest_signals(market_data_with_signals):
     """Get the most recent day's signals for each ticker."""
     if market_data_with_signals.empty:

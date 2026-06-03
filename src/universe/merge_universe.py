@@ -3,10 +3,12 @@ from src.common.config import get_data_path
 from src.common.logger import get_logger
 from src.universe.cn_universe import build_cn_universe
 from src.universe.us_universe import build_us_universe
+from src.common.tracing import observe
 
 log = get_logger("universe.merge")
 
 
+@observe(name="build_full_universe", type="tool")
 def build_full_universe():
     """Build and merge CN + US tech universes."""
     cn = build_cn_universe()

@@ -24,6 +24,7 @@ from src.news.world_monitor import fetch_geopolitical_context
 from src.capital_flow.northbound import fetch_northbound_flow
 from src.common.stock_info import enrich_alerts
 from src.market_data.market_cap import fetch_all_market_caps, save_market_caps
+from src.common.tracing import observe
 
 log = get_logger("pipeline.daily")
 
@@ -39,6 +40,7 @@ US_NEWS_TICKERS = [
 ]
 
 
+@observe(name="main", type="agent")
 def main():
     today = datetime.now().strftime("%Y%m%d")
     log.info(f"=== Daily Pipeline {today} ===")

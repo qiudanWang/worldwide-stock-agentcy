@@ -6,6 +6,7 @@ one peer moved significantly while another was flat.
 import pandas as pd
 from src.common.config import load_yaml, get_data_path
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("alerts.peer")
 
@@ -17,6 +18,7 @@ MARKET_FLAGS = {
 }
 
 
+@observe(name="check_global_peer_alerts", type="tool")
 def check_global_peer_alerts(all_market_signals, peer_mapping_df=None,
                              mover_threshold=0.03, flat_threshold=0.01):
     """Check for divergences across ALL global peer pairs.
@@ -79,6 +81,7 @@ def check_global_peer_alerts(all_market_signals, peer_mapping_df=None,
     return result
 
 
+@observe(name="_check_global_alerts", type="tool")
 def _check_global_alerts(peer_df, returns, mover_threshold, flat_threshold):
     """Check alerts using global peer mapping format."""
     alerts = []
@@ -149,6 +152,7 @@ def _check_global_alerts(peer_df, returns, mover_threshold, flat_threshold):
     return alerts
 
 
+@observe(name="_check_legacy_alerts", type="tool")
 def _check_legacy_alerts(peer_df, returns, mover_threshold, flat_threshold):
     """Check alerts using legacy CN->US peer mapping format."""
     alerts = []
@@ -218,6 +222,7 @@ def _check_legacy_alerts(peer_df, returns, mover_threshold, flat_threshold):
     return alerts
 
 
+@observe(name="check_peer_relative_alerts", type="tool")
 def check_peer_relative_alerts(latest_signals_df, peer_mapping_df=None):
     """Backward-compatible wrapper: delegates to check_global_peer_alerts.
 

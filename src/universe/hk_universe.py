@@ -3,6 +3,7 @@
 import pandas as pd
 from src.common.config import get_data_path
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("universe.hk")
 
@@ -24,16 +25,19 @@ _TECH_NAME_KEYWORDS = [
 ]
 
 
+@observe(name="_normalize_code", type="tool")
 def _normalize_code(raw_code: str) -> str:
     """Normalize HK stock code to 5-digit zero-padded string."""
     return raw_code.strip().zfill(5)
 
 
+@observe(name="_strip_leading_zeros", type="tool")
 def _strip_leading_zeros(code: str) -> str:
     """Strip leading zeros for the ticker field (e.g., '00700' -> '700')."""
     return str(int(code))
 
 
+@observe(name="_matches_tech", type="tool")
 def _matches_tech(name: str, code: str) -> bool:
     """Return True if the stock matches tech criteria by name or code."""
     if code in _BASELINE_CODES:
@@ -45,6 +49,7 @@ def _matches_tech(name: str, code: str) -> bool:
     return False
 
 
+@observe(name="build_hk_tech_universe", type="tool")
 def build_hk_tech_universe() -> pd.DataFrame:
     """Fetch HK tech stocks dynamically from akshare HKEX spot data.
 
@@ -136,6 +141,7 @@ def build_hk_tech_universe() -> pd.DataFrame:
     return result
 
 
+@observe(name="_fallback_watchlist", type="tool")
 def _fallback_watchlist() -> pd.DataFrame:
     """Load the static YAML watchlist as fallback."""
     from src.universe.yf_universe import build_yf_universe

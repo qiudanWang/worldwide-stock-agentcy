@@ -15,12 +15,14 @@ import pandas as pd
 from src.common.config import get_data_path, load_yaml
 from src.data_api.market import get_indices as _market_indices
 from src.data_api.market import get_latest_signals as _market_signals
+from src.common.tracing import observe
 
 
 # ---------------------------------------------------------------------------
 # Markets config
 # ---------------------------------------------------------------------------
 
+@observe(name="list_markets", type="tool")
 def list_markets() -> list[str]:
     """Return the list of all configured market codes.
 
@@ -38,6 +40,7 @@ def list_markets() -> list[str]:
 # Universe master
 # ---------------------------------------------------------------------------
 
+@observe(name="get_universe_master", type="tool")
 def get_universe_master() -> pd.DataFrame:
     """Return the merged universe of all markets.
 
@@ -54,6 +57,7 @@ def get_universe_master() -> pd.DataFrame:
         return pd.DataFrame()
 
 
+@observe(name="get_universe_for_markets", type="tool")
 def get_universe_for_markets(markets: list[str]) -> pd.DataFrame:
     """Return the master universe filtered to a subset of markets.
 
@@ -69,6 +73,7 @@ def get_universe_for_markets(markets: list[str]) -> pd.DataFrame:
     return df[df["market"].isin(markets)].reset_index(drop=True)
 
 
+@observe(name="search_universe", type="tool")
 def search_universe(query: str, markets: list[str] | None = None) -> pd.DataFrame:
     """Search the master universe by ticker or company name substring.
 
@@ -97,6 +102,7 @@ def search_universe(query: str, markets: list[str] | None = None) -> pd.DataFram
 # Macro indicators
 # ---------------------------------------------------------------------------
 
+@observe(name="get_macro_indicators", type="tool")
 def get_macro_indicators(
     category: str | None = None,
     days: int | None = None,
@@ -129,6 +135,7 @@ def get_macro_indicators(
         return pd.DataFrame()
 
 
+@observe(name="get_macro_latest", type="tool")
 def get_macro_latest(indicators: list[str] | None = None) -> dict:
     """Return the most recent value for all macro indicators.
 
@@ -154,6 +161,7 @@ def get_macro_latest(indicators: list[str] | None = None) -> dict:
         return {}
 
 
+@observe(name="get_macro_indicator_series", type="tool")
 def get_macro_indicator_series(indicator: str) -> pd.DataFrame:
     """Return the full time series for a single named macro indicator.
 
@@ -173,6 +181,7 @@ def get_macro_indicator_series(indicator: str) -> pd.DataFrame:
     return subset.sort_values("date").reset_index(drop=True)
 
 
+@observe(name="list_macro_indicators", type="tool")
 def list_macro_indicators() -> list[str]:
     """Return all available macro indicator names.
 
@@ -189,6 +198,7 @@ def list_macro_indicators() -> list[str]:
 # Sector performance
 # ---------------------------------------------------------------------------
 
+@observe(name="get_sector_performance", type="tool")
 def get_sector_performance(
     markets: list[str] | None = None,
     min_stock_count: int = 2,
@@ -215,6 +225,7 @@ def get_sector_performance(
         return pd.DataFrame()
 
 
+@observe(name="get_top_sectors", type="tool")
 def get_top_sectors(
     n: int = 5,
     horizon: str = "1d",
@@ -238,6 +249,7 @@ def get_top_sectors(
     return df.nlargest(n, col).reset_index(drop=True)
 
 
+@observe(name="get_sector_performance_for_ticker", type="tool")
 def get_sector_performance_for_ticker(ticker: str) -> dict:
     """Return the sector performance row for the sector a ticker belongs to.
 
@@ -272,6 +284,7 @@ def get_sector_performance_for_ticker(ticker: str) -> dict:
 # Correlations
 # ---------------------------------------------------------------------------
 
+@observe(name="get_correlations", type="tool")
 def get_correlations() -> dict:
     """Return the cross-market index correlation matrices.
 
@@ -288,6 +301,7 @@ def get_correlations() -> dict:
         return {}
 
 
+@observe(name="get_correlation_pair", type="tool")
 def get_correlation_pair(symbol_a: str, symbol_b: str) -> float | None:
     """Return the pairwise correlation between two index symbols.
 
@@ -307,6 +321,7 @@ def get_correlation_pair(symbol_a: str, symbol_b: str) -> float | None:
 # Global alerts
 # ---------------------------------------------------------------------------
 
+@observe(name="get_global_alerts", type="tool")
 def get_global_alerts(
     alert_types: list[str] | None = None,
     markets: list[str] | None = None,
@@ -342,6 +357,7 @@ def get_global_alerts(
         return []
 
 
+@observe(name="get_global_alert_summary", type="tool")
 def get_global_alert_summary() -> dict:
     """Return a count summary of global alerts by type and market.
 
@@ -360,6 +376,7 @@ def get_global_alert_summary() -> dict:
     return {"by_type": by_type, "by_market": by_market, "total": len(alerts)}
 
 
+@observe(name="get_alerts_for_ticker", type="tool")
 def get_alerts_for_ticker(ticker: str) -> list[dict]:
     """Return all global alerts that reference a specific ticker.
 
@@ -378,6 +395,7 @@ def get_alerts_for_ticker(ticker: str) -> list[dict]:
 # All-markets convenience
 # ---------------------------------------------------------------------------
 
+@observe(name="get_all_latest_signals", type="tool")
 def get_all_latest_signals() -> pd.DataFrame:
     """Return the most recent signal row for every ticker across all markets.
 
@@ -403,6 +421,7 @@ def get_all_latest_signals() -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
+@observe(name="get_all_indices", type="tool")
 def get_all_indices(days: int = 60) -> pd.DataFrame:
     """Return index price history for all markets combined.
 

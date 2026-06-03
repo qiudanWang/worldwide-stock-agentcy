@@ -17,6 +17,7 @@ from datetime import datetime
 import requests
 import pandas as pd
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("news.worldmonitor")
 
@@ -59,6 +60,7 @@ HEADERS = {
 }
 
 
+@observe(name="fetch_rss_feed", type="tool")
 def fetch_rss_feed(name, url):
     """Fetch and parse a single RSS feed."""
     try:
@@ -88,6 +90,7 @@ def fetch_rss_feed(name, url):
         return []
 
 
+@observe(name="fetch_geopolitical_news", type="tool")
 def fetch_geopolitical_news(keyword_filter=None):
     """Fetch news from World Monitor's curated RSS sources.
 
@@ -127,6 +130,7 @@ def fetch_geopolitical_news(keyword_filter=None):
     return df
 
 
+@observe(name="fetch_geopolitical_context", type="tool")
 def fetch_geopolitical_context():
     """Fetch geopolitical context — filtered news from curated sources.
 

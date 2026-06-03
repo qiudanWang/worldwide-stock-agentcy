@@ -28,7 +28,6 @@ class BaseStrategy(ABC):
     timeframe: str   # "daily" | "weekly" | "monthly" | "yearly"
 
     @abstractmethod
-    @observe(name="BaseStrategy.select", type="tool")
     def select(
         self,
         universe_df: pd.DataFrame,
@@ -38,7 +37,6 @@ class BaseStrategy(ABC):
         """Return list of tickers to hold. Max `top_n` items."""
         ...
 
-    @observe(name="BaseStrategy.__repr__", type="tool")
     def __repr__(self):
         return f"{self.__class__.__name__}(name={self.name!r})"
 
@@ -53,7 +51,6 @@ def _until(df: pd.DataFrame, date: pd.Timestamp) -> pd.DataFrame:
     return df.iloc[:idx]
 
 
-@observe(name="_last_n_closes", type="tool")
 def _last_n_closes(history: dict[str, pd.DataFrame], ticker: str, date: pd.Timestamp, n: int) -> Optional[pd.Series]:
     """Return the last n closing prices up to and including `date`."""
     df = history.get(ticker)
@@ -65,7 +62,6 @@ def _last_n_closes(history: dict[str, pd.DataFrame], ticker: str, date: pd.Times
     return df["close"].reset_index(drop=True)
 
 
-@observe(name="_momentum", type="tool")
 def _momentum(closes: pd.Series) -> float:
     """Simple price momentum: last / first - 1."""
     if closes is None or len(closes) < 2:
@@ -89,13 +85,11 @@ class DailyVolumeBreakout(BaseStrategy):
     description = "Volume ratio > 2× & positive day — top 10 by volume ratio"
     timeframe   = "daily"
 
-    @observe(name="DailyVolumeBreakout.__init__", type="tool")
     def __init__(self, top_n: int = 10, min_vol_ratio: float = 2.0, vol_lookback: int = 20):
         self.top_n          = top_n
         self.min_vol_ratio  = min_vol_ratio
         self.vol_lookback   = vol_lookback
 
-    @observe(name="DailyVolumeBreakout.select", type="tool")
     def select(self, universe_df, history, date):
         tickers = universe_df["ticker"].tolist()
         n = self.vol_lookback + 1
@@ -144,11 +138,9 @@ class WeeklyMomentum5d(BaseStrategy):
     description = "Top 10 by 5-day return — rebalanced weekly"
     timeframe   = "weekly"
 
-    @observe(name="WeeklyMomentum5d.__init__", type="tool")
     def __init__(self, top_n: int = 10):
         self.top_n = top_n
 
-    @observe(name="WeeklyMomentum5d.select", type="tool")
     def select(self, universe_df, history, date):
         tickers = universe_df["ticker"].tolist()
         tk_list, moms = [], []
@@ -178,12 +170,10 @@ class MonthlySectorMomentum(BaseStrategy):
     description = "Top 10 by 20-day return, max 3 per sector — rebalanced monthly"
     timeframe   = "monthly"
 
-    @observe(name="MonthlySectorMomentum.__init__", type="tool")
     def __init__(self, top_n: int = 10, max_per_sector: int = 3):
         self.top_n          = top_n
         self.max_per_sector = max_per_sector
 
-    @observe(name="MonthlySectorMomentum.select", type="tool")
     def select(self, universe_df, history, date):
         sector_map = (
             universe_df.set_index("ticker")["sector"].to_dict()
@@ -228,11 +218,9 @@ class YearlyMomentum252d(BaseStrategy):
     description = "Top 10 by 252-day return — rebalanced yearly"
     timeframe   = "yearly"
 
-    @observe(name="YearlyMomentum252d.__init__", type="tool")
     def __init__(self, top_n: int = 10):
         self.top_n = top_n
 
-    @observe(name="YearlyMomentum252d.select", type="tool")
     def select(self, universe_df, history, date):
         tickers = universe_df["ticker"].tolist()
         tk_list, moms = [], []

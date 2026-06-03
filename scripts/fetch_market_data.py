@@ -12,10 +12,12 @@ from src.market_data.us_market_data import fetch_us_batch
 from src.market_data.volume_signals import compute_volume_signals, get_latest_signals
 from src.alerts.volume_alerts import check_volume_alerts
 from src.alerts.formatter import format_volume_alerts, save_alerts, print_alerts
+from src.common.tracing import observe
 
 log = get_logger("script.market")
 
 
+@observe(name="main", type="tool")
 def main():
     # Load universe
     cn_path = get_data_path("processed", "cn_tech_universe.parquet")

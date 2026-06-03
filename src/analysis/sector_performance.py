@@ -3,6 +3,7 @@
 import pandas as pd
 from src.common.config import get_data_path
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("analysis.sector")
 
@@ -208,6 +209,7 @@ _SECTOR_MAP = {
 }
 
 
+@observe(name="_normalize_sector", type="tool")
 def _normalize_sector(name):
     """Return mapped English name, or original if not in map."""
     if pd.isna(name):
@@ -215,6 +217,7 @@ def _normalize_sector(name):
     return _SECTOR_MAP.get(str(name).strip(), str(name).strip())
 
 
+@observe(name="normalize_sector_df", type="tool")
 def normalize_sector_df(df):
     """Re-normalize and re-aggregate an already-computed sector_performance DataFrame.
 
@@ -354,6 +357,7 @@ _META_SECTOR_MAP = {
 }
 
 
+@observe(name="meta_sector_heatmap", type="tool")
 def meta_sector_heatmap(sector_df):
     """Collapse normalized sector_performance into broad meta-sectors.
 
@@ -385,6 +389,7 @@ def meta_sector_heatmap(sector_df):
     return pd.DataFrame(agg_parts).reset_index(drop=True)
 
 
+@observe(name="compute_sector_performance", type="tool")
 def compute_sector_performance(all_market_data):
     """Compute per-sector average return grouped by market.
 
@@ -465,6 +470,7 @@ def compute_sector_performance(all_market_data):
     return grouped
 
 
+@observe(name="detect_sector_rotation", type="tool")
 def detect_sector_rotation(current_perf, previous_perf):
     """Detect sectors that have changed rank significantly.
 

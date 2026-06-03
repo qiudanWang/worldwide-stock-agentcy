@@ -3,10 +3,12 @@
 import pandas as pd
 from src.common.config import load_yaml, get_data_path
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("universe.yf")
 
 
+@observe(name="build_yf_universe", type="tool")
 def build_yf_universe(market, watchlist_config, ticker_suffix=""):
     """Build stock universe from a YAML watchlist file.
 
@@ -42,6 +44,7 @@ def build_yf_universe(market, watchlist_config, ticker_suffix=""):
     return result
 
 
+@observe(name="enrich_name_yf", type="tool")
 def enrich_name_yf(df: pd.DataFrame, ticker_col: str = "yf_symbol") -> pd.DataFrame:
     """Fetch yfinance longName/shortName for rows where name is still a placeholder (ticker number).
 
@@ -120,6 +123,7 @@ def enrich_name_yf(df: pd.DataFrame, ticker_col: str = "yf_symbol") -> pd.DataFr
     return df
 
 
+@observe(name="enrich_subsector_yf", type="tool")
 def enrich_subsector_yf(df: pd.DataFrame, ticker_col: str = "yf_symbol") -> pd.DataFrame:
     """Fetch yfinance industry field for each ticker and store as subsector.
 
@@ -163,6 +167,7 @@ def enrich_subsector_yf(df: pd.DataFrame, ticker_col: str = "yf_symbol") -> pd.D
     return df
 
 
+@observe(name="save_market_universe", type="tool")
 def save_market_universe(df, market):
     """Save a single market's universe to its data directory."""
     path = get_data_path("markets", market, "universe.parquet")

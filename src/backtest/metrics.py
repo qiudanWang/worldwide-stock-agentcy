@@ -8,8 +8,10 @@ All functions operate on a portfolio equity series (pd.Series indexed by date).
 import numpy as np
 import pandas as pd
 from typing import Optional
+from src.common.tracing import observe
 
 
+@observe(name="total_return", type="tool")
 def total_return(equity: pd.Series) -> float:
     """Total return from first to last equity value."""
     if len(equity) < 2:
@@ -20,6 +22,7 @@ def total_return(equity: pd.Series) -> float:
     return float(equity.iloc[-1] / start - 1)
 
 
+@observe(name="cagr", type="tool")
 def cagr(equity: pd.Series) -> float:
     """Compound Annual Growth Rate."""
     if len(equity) < 2:
@@ -35,6 +38,7 @@ def cagr(equity: pd.Series) -> float:
     return float((equity.iloc[-1] / start_val) ** (1.0 / years) - 1)
 
 
+@observe(name="sharpe_ratio", type="tool")
 def sharpe_ratio(equity: pd.Series, risk_free_rate: float = 0.0) -> float:
     """
     Annualised Sharpe ratio using daily returns.
@@ -50,6 +54,7 @@ def sharpe_ratio(equity: pd.Series, risk_free_rate: float = 0.0) -> float:
     return float(excess.mean() / std * np.sqrt(252))
 
 
+@observe(name="max_drawdown", type="tool")
 def max_drawdown(equity: pd.Series) -> float:
     """Maximum peak-to-trough drawdown (negative number, e.g. -0.25 = -25%)."""
     if len(equity) < 2:
@@ -63,6 +68,7 @@ def max_drawdown(equity: pd.Series) -> float:
     return float(drawdown.min())
 
 
+@observe(name="win_rate", type="tool")
 def win_rate(trades: pd.DataFrame) -> float:
     """
     Fraction of trades that were profitable.
@@ -74,6 +80,7 @@ def win_rate(trades: pd.DataFrame) -> float:
     return float(winners / len(trades))
 
 
+@observe(name="avg_hold_days", type="tool")
 def avg_hold_days(trades: pd.DataFrame) -> float:
     """
     Average holding period in calendar days.
@@ -87,6 +94,7 @@ def avg_hold_days(trades: pd.DataFrame) -> float:
     return float(hold.mean())
 
 
+@observe(name="compute_all", type="tool")
 def compute_all(
     equity: pd.Series,
     trades: Optional[pd.DataFrame] = None,

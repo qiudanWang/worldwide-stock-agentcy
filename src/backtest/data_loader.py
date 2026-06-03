@@ -30,8 +30,18 @@ _YF_SUFFIX = {
 }
 
 
+_EMPTY_SCHEMA = pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume"])
+
+
 def _cache_path(market: str, ticker: str) -> str:
     return get_data_path("backtest", "history", market, f"{ticker}.parquet")
+
+
+def _write_tombstone(market: str, ticker: str):
+    """Write an empty parquet so failed tickers aren't re-fetched every run."""
+    cp = _cache_path(market, ticker)
+    os.makedirs(os.path.dirname(cp), exist_ok=True)
+    _EMPTY_SCHEMA.to_parquet(cp, index=False)
 
 
 def _is_cache_fresh(path: str) -> bool:
@@ -182,15 +192,20 @@ def load_market_history_batch(
         futs = {pool.submit(_read, tk, cp): tk for tk, cp in fresh_tickers}
         for fut in as_completed(futs):
             tk, df, ok = fut.result()
-            if ok:
+            if ok and df is not None and not df.empty:
                 result[tk] = df
-            else:
+            elif not ok:
                 need_full.append(tk)
+            # ok=True but df.empty → tombstone, intentionally skipped
 
     # Sequential reads for stale files (need last_date to compute delta)
     for tk, cp in stale_tickers:
         try:
             existing = pd.read_parquet(cp)
+            if existing.empty:
+                # Expired tombstone — retry the fetch
+                need_full.append(tk)
+                continue
             last_date = pd.to_datetime(existing["date"]).max()
             delta_start = (last_date + timedelta(days=1)).strftime("%Y-%m-%d")
             if delta_start >= today:
@@ -216,6 +231,8 @@ def load_market_history_batch(
             if not df.empty:
                 df.to_parquet(_cache_path(market, tk), index=False)
                 result[tk] = df
+            else:
+                _write_tombstone(market, tk)
             if progress_callback:
                 progress_callback(len(result), total)
             time.sleep(0.3)
@@ -256,11 +273,16 @@ def load_market_history_batch(
             for i in range(0, len(yf_syms), chunk_size):
                 chunk   = yf_syms[i:i + chunk_size]
                 fetched = _fetch_yf_batch(chunk, start_date, end_date)
-                for yf_sym, df in fetched.items():
+                for yf_sym in chunk:
                     tk = yf_map.get(yf_sym, yf_sym)
+                    df = fetched.get(yf_sym, pd.DataFrame())
+                    cp = _cache_path(market, tk)
+                    os.makedirs(os.path.dirname(cp), exist_ok=True)
                     if not df.empty:
-                        df.to_parquet(_cache_path(market, tk), index=False)
+                        df.to_parquet(cp, index=False)
                         result[tk] = df
+                    else:
+                        _write_tombstone(market, tk)
                 if progress_callback:
                     progress_callback(len(result), total)
 

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from src.common.tracing import observe
 
 
 @dataclass
@@ -33,6 +34,7 @@ class AgentToolResult:
     status_message: str = ""    # Human-readable status summary.
 
     @classmethod
+    @observe(name="AgentToolResult.from_agent_result", type="tool")
     def from_agent_result(cls, market, agent_type, result) -> "AgentToolResult":
         msg = f"{result.records_written} records in {result.duration_seconds:.1f}s"
         if result.errors:
@@ -48,6 +50,7 @@ class AgentToolResult:
         )
 
     @classmethod
+    @observe(name="AgentToolResult.failure", type="tool")
     def failure(cls, market, agent_type, error: str) -> "AgentToolResult":
         return cls(
             market=market,
@@ -62,6 +65,7 @@ class AgentToolResult:
 # Internal: build a single agent instance
 # ---------------------------------------------------------------------------
 
+@observe(name="_build_agent", type="tool")
 def _build_agent(market: str, agent_type: str, force: bool = False):
     """Instantiate the correct agent class for a market + type."""
     from src.common.config import load_yaml
@@ -90,6 +94,7 @@ def _build_agent(market: str, agent_type: str, force: bool = False):
 # Per-market agent tools
 # ---------------------------------------------------------------------------
 
+@observe(name="run_data_agent", type="tool")
 def run_data_agent(market: str, force: bool = False) -> AgentToolResult:
     """Fetch and save market data for a single market.
 
@@ -118,6 +123,7 @@ def run_data_agent(market: str, force: bool = False) -> AgentToolResult:
         return AgentToolResult.failure(market, "data", str(e))
 
 
+@observe(name="run_news_agent", type="tool")
 def run_news_agent(market: str, force: bool = False) -> AgentToolResult:
     """Fetch and save company news for a single market.
 
@@ -141,6 +147,7 @@ def run_news_agent(market: str, force: bool = False) -> AgentToolResult:
         return AgentToolResult.failure(market, "news", str(e))
 
 
+@observe(name="run_signal_agent", type="tool")
 def run_signal_agent(market: str, force: bool = False) -> AgentToolResult:
     """Compute capital flow and local alerts for a single market.
 
@@ -169,6 +176,7 @@ def run_signal_agent(market: str, force: bool = False) -> AgentToolResult:
 # Multi-agent convenience tools
 # ---------------------------------------------------------------------------
 
+@observe(name="run_all_agents_for_market", type="tool")
 def run_all_agents_for_market(
     market: str, force: bool = False
 ) -> dict[str, AgentToolResult]:
@@ -203,6 +211,7 @@ def run_all_agents_for_market(
     return results
 
 
+@observe(name="run_data_agents_all_markets", type="tool")
 def run_data_agents_all_markets(
     markets: list[str] | None = None,
     max_workers: int = 6,
@@ -221,6 +230,7 @@ def run_data_agents_all_markets(
     return _run_parallel(run_data_agent, markets, max_workers, force)
 
 
+@observe(name="run_news_agents_all_markets", type="tool")
 def run_news_agents_all_markets(
     markets: list[str] | None = None,
     max_workers: int = 6,
@@ -239,6 +249,7 @@ def run_news_agents_all_markets(
     return _run_parallel(run_news_agent, markets, max_workers, force)
 
 
+@observe(name="run_signal_agents_all_markets", type="tool")
 def run_signal_agents_all_markets(
     markets: list[str] | None = None,
     max_workers: int = 6,
@@ -261,6 +272,7 @@ def run_signal_agents_all_markets(
 # Global agent tool
 # ---------------------------------------------------------------------------
 
+@observe(name="run_global_agent", type="tool")
 def run_global_agent(force: bool = False) -> AgentToolResult:
     """Run the GlobalAgent to produce cross-market analysis.
 
@@ -292,6 +304,7 @@ def run_global_agent(force: bool = False) -> AgentToolResult:
 # Full pipeline tool
 # ---------------------------------------------------------------------------
 
+@observe(name="run_full_pipeline", type="tool")
 def run_full_pipeline(
     markets: list[str] | None = None,
     max_workers: int = 6,
@@ -350,6 +363,7 @@ def run_full_pipeline(
 # Status and introspection tools
 # ---------------------------------------------------------------------------
 
+@observe(name="get_agent_status", type="tool")
 def get_agent_status(agent_name: str | None = None) -> dict:
     """Return the runtime status of one or all pipeline agents.
 
@@ -377,6 +391,7 @@ def get_agent_status(agent_name: str | None = None) -> dict:
         return {}
 
 
+@observe(name="list_available_agents", type="tool")
 def list_available_agents() -> list[str]:
     """Return the names of all agents registered in the pipeline.
 
@@ -401,6 +416,7 @@ def list_available_agents() -> list[str]:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+@observe(name="_all_markets", type="tool")
 def _all_markets() -> list[str]:
     from src.common.config import load_yaml
     try:
@@ -409,6 +425,7 @@ def _all_markets() -> list[str]:
         return []
 
 
+@observe(name="_run_parallel", type="tool")
 def _run_parallel(fn, markets, max_workers, force) -> dict[str, AgentToolResult]:
     """Run fn(market, force) for each market in parallel."""
     if markets is None:

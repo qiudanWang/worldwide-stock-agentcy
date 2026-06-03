@@ -19,12 +19,14 @@ from datetime import datetime
 import pandas as pd
 
 from src.common.config import get_data_path
+from src.common.tracing import observe
 
 
 # ---------------------------------------------------------------------------
 # Universe
 # ---------------------------------------------------------------------------
 
+@observe(name="get_universe", type="tool")
 def get_universe(market: str) -> pd.DataFrame:
     """Return the stock universe for a given market.
 
@@ -41,6 +43,7 @@ def get_universe(market: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+@observe(name="get_universe_tickers", type="tool")
 def get_universe_tickers(market: str) -> list[str]:
     """Return the list of ticker symbols for a given market.
 
@@ -60,6 +63,7 @@ def get_universe_tickers(market: str) -> list[str]:
 # Market daily snapshots
 # ---------------------------------------------------------------------------
 
+@observe(name="get_market_daily", type="tool")
 def get_market_daily(market: str, date: str | None = None) -> pd.DataFrame:
     """Return the OHLCV and return snapshot for a single trading day.
 
@@ -86,6 +90,7 @@ def get_market_daily(market: str, date: str | None = None) -> pd.DataFrame:
     return _latest_snapshot(market)
 
 
+@observe(name="get_market_history", type="tool")
 def get_market_history(market: str, days: int = 60) -> pd.DataFrame:
     """Return multi-day OHLCV history for all tickers in a market.
 
@@ -117,6 +122,7 @@ def get_market_history(market: str, days: int = 60) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+@observe(name="get_latest_signals", type="tool")
 def get_latest_signals(market: str) -> pd.DataFrame:
     """Return the most recent signal row for every ticker in a market.
 
@@ -140,6 +146,7 @@ def get_latest_signals(market: str) -> pd.DataFrame:
     )
 
 
+@observe(name="get_available_snapshot_dates", type="tool")
 def get_available_snapshot_dates(market: str) -> list[str]:
     """Return all available daily snapshot dates for a market, oldest first.
 
@@ -164,6 +171,7 @@ def get_available_snapshot_dates(market: str) -> list[str]:
 # Market cap
 # ---------------------------------------------------------------------------
 
+@observe(name="get_market_cap", type="tool")
 def get_market_cap(market: str) -> pd.DataFrame:
     """Return the most recent market capitalisation data for a market.
 
@@ -180,6 +188,7 @@ def get_market_cap(market: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+@observe(name="get_market_cap_map", type="tool")
 def get_market_cap_map(market: str) -> dict[str, float | None]:
     """Return a ticker-to-market-cap mapping for O(1) lookups.
 
@@ -200,6 +209,7 @@ def get_market_cap_map(market: str) -> dict[str, float | None]:
 # Indices
 # ---------------------------------------------------------------------------
 
+@observe(name="get_indices", type="tool")
 def get_indices(market: str, days: int | None = None) -> pd.DataFrame:
     """Return index price history for a market.
 
@@ -222,6 +232,7 @@ def get_indices(market: str, days: int | None = None) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+@observe(name="get_latest_index_values", type="tool")
 def get_latest_index_values(market: str) -> pd.DataFrame:
     """Return the most recent closing value for each index in a market.
 
@@ -247,6 +258,7 @@ def get_latest_index_values(market: str) -> pd.DataFrame:
 # News
 # ---------------------------------------------------------------------------
 
+@observe(name="get_news", type="tool")
 def get_news(market: str, matched_only: bool = False) -> pd.DataFrame:
     """Return company news articles for a market.
 
@@ -267,6 +279,7 @@ def get_news(market: str, matched_only: bool = False) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+@observe(name="get_news_for_ticker", type="tool")
 def get_news_for_ticker(
     market: str, ticker: str, matched_only: bool = False
 ) -> pd.DataFrame:
@@ -287,6 +300,7 @@ def get_news_for_ticker(
     return df[df["ticker"] == ticker].reset_index(drop=True)
 
 
+@observe(name="get_news_counts", type="tool")
 def get_news_counts(market: str) -> pd.DataFrame:
     """Return per-ticker article counts and keyword hit totals for a market.
 
@@ -315,6 +329,7 @@ def get_news_counts(market: str) -> pd.DataFrame:
 # Capital flow
 # ---------------------------------------------------------------------------
 
+@observe(name="get_capital_flow", type="tool")
 def get_capital_flow(market: str, days: int | None = None) -> pd.DataFrame:
     """Return capital flow data for a market.
 
@@ -341,6 +356,7 @@ def get_capital_flow(market: str, days: int | None = None) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+@observe(name="get_latest_capital_flow", type="tool")
 def get_latest_capital_flow(market: str) -> dict:
     """Return the most recent capital flow entry for a market.
 
@@ -361,6 +377,7 @@ def get_latest_capital_flow(market: str) -> dict:
 # Alerts
 # ---------------------------------------------------------------------------
 
+@observe(name="get_market_alerts", type="tool")
 def get_market_alerts(market: str) -> list[dict]:
     """Return all alerts generated for a market on the most recent run.
 
@@ -380,6 +397,7 @@ def get_market_alerts(market: str) -> list[dict]:
         return []
 
 
+@observe(name="get_market_alerts_by_type", type="tool")
 def get_market_alerts_by_type(market: str, alert_type: str) -> list[dict]:
     """Return alerts of a specific type for a market.
 
@@ -398,6 +416,7 @@ def get_market_alerts_by_type(market: str, alert_type: str) -> list[dict]:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+@observe(name="_latest_snapshot", type="tool")
 def _latest_snapshot(market: str) -> pd.DataFrame:
     """Load the most recent daily snapshot file for a market."""
     pattern = get_data_path("markets", market, "market_daily_*.parquet")

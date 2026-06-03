@@ -8,9 +8,11 @@ import warnings
 warnings.filterwarnings("ignore")
 
 import pandas as pd
+from src.common.tracing import observe
 
 _obb = None
 
+@observe(name="_get_obb", type="span")
 def _get_obb():
     global _obb
     if _obb is None:
@@ -19,6 +21,7 @@ def _get_obb():
     return _obb
 
 
+@observe(name="_safe", type="span")
 def _safe(fn, *args, **kwargs):
     """Call an OpenBB function, return empty DataFrame on failure."""
     try:
@@ -28,6 +31,7 @@ def _safe(fn, *args, **kwargs):
         return pd.DataFrame()
 
 
+@observe(name="_df_text", type="span")
 def _df_text(df, max_rows=20):
     if df.empty:
         return "(no data)"
@@ -36,6 +40,7 @@ def _df_text(df, max_rows=20):
 
 # ── Real-time tools ─────────────────────────────────────────────────
 
+@observe(name="get_gainers", type="tool")
 def get_gainers(limit=10) -> str:
     """Top gaining stocks right now (US market)."""
     obb = _get_obb()
@@ -46,6 +51,7 @@ def get_gainers(limit=10) -> str:
     return "TOP GAINERS (live):\n" + _df_text(df[cols], limit)
 
 
+@observe(name="get_losers", type="tool")
 def get_losers(limit=10) -> str:
     """Top losing stocks right now (US market)."""
     obb = _get_obb()
@@ -56,6 +62,7 @@ def get_losers(limit=10) -> str:
     return "TOP LOSERS (live):\n" + _df_text(df[cols], limit)
 
 
+@observe(name="get_most_active", type="tool")
 def get_most_active(limit=10) -> str:
     """Most actively traded stocks right now."""
     obb = _get_obb()
@@ -66,6 +73,7 @@ def get_most_active(limit=10) -> str:
     return "MOST ACTIVE (live):\n" + _df_text(df[cols], limit)
 
 
+@observe(name="get_stock_quote", type="tool")
 def get_stock_quote(tickers: str) -> str:
     """Real-time quote for one or more tickers (comma-separated)."""
     obb = _get_obb()
@@ -77,6 +85,7 @@ def get_stock_quote(tickers: str) -> str:
     return f"QUOTE ({tickers}):\n" + _df_text(df[cols])
 
 
+@observe(name="get_stock_history", type="tool")
 def get_stock_history(ticker: str, days: int = 30) -> str:
     """Recent price history for a ticker."""
     obb = _get_obb()
@@ -89,6 +98,7 @@ def get_stock_history(ticker: str, days: int = 30) -> str:
     return f"PRICE HISTORY {ticker} (last {days}d):\n" + _df_text(df[cols].tail(days))
 
 
+@observe(name="get_company_profile", type="tool")
 def get_company_profile(ticker: str) -> str:
     """Company profile and key stats."""
     obb = _get_obb()
@@ -98,6 +108,7 @@ def get_company_profile(ticker: str) -> str:
     return f"PROFILE ({ticker}):\n" + _df_text(df)
 
 
+@observe(name="get_company_news", type="tool")
 def get_company_news(ticker: str, limit: int = 8) -> str:
     """Latest news for a company."""
     obb = _get_obb()
@@ -108,6 +119,7 @@ def get_company_news(ticker: str, limit: int = 8) -> str:
     return f"NEWS ({ticker}, latest {limit}):\n" + _df_text(df[cols], limit)
 
 
+@observe(name="get_major_indices", type="tool")
 def get_major_indices() -> str:
     """Current levels of major global indices."""
     obb = _get_obb()
@@ -121,6 +133,7 @@ def get_major_indices() -> str:
     return "MAJOR INDICES (latest):\n" + _df_text(df[cols])
 
 
+@observe(name="get_fundamentals", type="tool")
 def get_fundamentals(ticker: str) -> str:
     """Key financial ratios and fundamentals. Falls back to direct yfinance for non-US."""
     # Try OpenBB first
@@ -187,6 +200,7 @@ def get_fundamentals(ticker: str) -> str:
         return f"No fundamental data for {ticker}. (yfinance error: {e})"
 
 
+@observe(name="get_earnings_calendar", type="tool")
 def get_earnings_calendar(limit: int = 10) -> str:
     """Upcoming earnings announcements."""
     obb = _get_obb()
@@ -227,6 +241,7 @@ _TICKER_TOOLS = [
 ]
 
 
+@observe(name="fetch_realtime_context", type="tool")
 def fetch_realtime_context(message: str, market: str = None) -> str:
     """
     Detect what real-time data the message needs and fetch it via OpenBB.

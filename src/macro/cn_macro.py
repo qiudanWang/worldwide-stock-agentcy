@@ -3,10 +3,12 @@
 import akshare as ak
 import pandas as pd
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("macro.cn")
 
 
+@observe(name="_parse_month_col", type="tool")
 def _parse_month_col(series):
     """Parse akshare 月份 column like '2026年02月份' into datetime."""
     return pd.to_datetime(
@@ -17,6 +19,7 @@ def _parse_month_col(series):
     )
 
 
+@observe(name="fetch_cn_cpi", type="tool")
 def fetch_cn_cpi():
     """Fetch China CPI MoM data."""
     try:
@@ -42,6 +45,7 @@ def fetch_cn_cpi():
         return pd.DataFrame()
 
 
+@observe(name="fetch_cn_ppi", type="tool")
 def fetch_cn_ppi():
     """Fetch China PPI data."""
     try:
@@ -68,6 +72,7 @@ def fetch_cn_ppi():
         return pd.DataFrame()
 
 
+@observe(name="fetch_cn_pmi", type="tool")
 def fetch_cn_pmi():
     """Fetch China PMI data."""
     try:
@@ -94,6 +99,7 @@ def fetch_cn_pmi():
         return pd.DataFrame()
 
 
+@observe(name="fetch_cn_gdp", type="tool")
 def fetch_cn_gdp():
     """Fetch China GDP growth data (quarterly)."""
     try:
@@ -129,6 +135,7 @@ def fetch_cn_gdp():
         return pd.DataFrame()
 
 
+@observe(name="fetch_cn_house_price", type="tool")
 def fetch_cn_house_price():
     """Fetch China new home price index YoY change (akshare).
 
@@ -171,6 +178,7 @@ _CN_CITIES = [
 ]
 
 
+@observe(name="fetch_cn_house_price_cities", type="tool")
 def fetch_cn_house_price_cities():
     """Fetch new home price index for major CN cities (last 24 months).
 
@@ -214,6 +222,7 @@ def fetch_cn_house_price_cities():
     return result
 
 
+@observe(name="fetch_all_cn_macro", type="tool")
 def fetch_all_cn_macro():
     """Fetch all China macro indicators.
 

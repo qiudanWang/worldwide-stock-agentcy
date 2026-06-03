@@ -3,10 +3,12 @@ from datetime import datetime
 from src.common.config import get_data_path
 from src.common.logger import get_logger
 from src.common.stock_info import enrich_alerts
+from src.common.tracing import observe
 
 log = get_logger("alerts.formatter")
 
 
+@observe(name="format_volume_alerts", type="tool")
 def format_volume_alerts(alerts_df):
     """Format volume alerts as a list of dicts.
 
@@ -33,6 +35,7 @@ def format_volume_alerts(alerts_df):
     return records
 
 
+@observe(name="format_price_alerts", type="tool")
 def format_price_alerts(alerts):
     """Format price alerts for display."""
     records = []
@@ -49,6 +52,7 @@ def format_price_alerts(alerts):
     return records
 
 
+@observe(name="format_gap_alerts", type="tool")
 def format_gap_alerts(alerts):
     """Format gap alerts for display."""
     records = []
@@ -67,6 +71,7 @@ def format_gap_alerts(alerts):
     return records
 
 
+@observe(name="format_correlation_break_alerts", type="tool")
 def format_correlation_break_alerts(alerts):
     """Format correlation break alerts for display."""
     records = []
@@ -82,6 +87,7 @@ def format_correlation_break_alerts(alerts):
     return records
 
 
+@observe(name="format_macro_alerts", type="tool")
 def format_macro_alerts(alerts):
     """Format macro alerts (all sub-types) for display."""
     records = []
@@ -94,6 +100,7 @@ def format_macro_alerts(alerts):
     return records
 
 
+@observe(name="save_alerts", type="tool")
 def save_alerts(alerts_list, filename=None):
     """Save alerts to JSON file."""
     if not alerts_list:
@@ -110,6 +117,7 @@ def save_alerts(alerts_list, filename=None):
     log.info(f"Saved {len(alerts_list)} alerts to {path}")
 
 
+@observe(name="print_alerts", type="tool")
 def print_alerts(alerts_list):
     """Print alerts to console, handling all alert types."""
     if not alerts_list:
@@ -134,6 +142,7 @@ def print_alerts(alerts_list):
     print()
 
 
+@observe(name="_print_single_alert", type="tool")
 def _print_single_alert(a):
     """Print a single alert based on its type."""
     atype = a.get("alert_type", "")

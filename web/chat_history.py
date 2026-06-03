@@ -11,9 +11,12 @@ Schema:
 import os
 import sqlite3
 
+from src.common.tracing import observe
+
 _DB_PATH = None
 
 
+@observe(name="_db_path", type="span")
 def _db_path() -> str:
     global _DB_PATH
     if _DB_PATH is None:
@@ -22,12 +25,14 @@ def _db_path() -> str:
     return _DB_PATH
 
 
+@observe(name="_conn", type="span")
 def _conn() -> sqlite3.Connection:
     db = sqlite3.connect(_db_path())
     db.row_factory = sqlite3.Row
     return db
 
 
+@observe(name="init_db", type="span")
 def init_db():
     os.makedirs(os.path.dirname(_db_path()), exist_ok=True)
     with _conn() as db:
@@ -50,6 +55,7 @@ def init_db():
         """)
 
 
+@observe(name="save_turn", type="span")
 def save_turn(session_id: str, user_msg: str, agent_msg: str):
     """Append one user+agent turn to the history."""
     with _conn() as db:
@@ -68,6 +74,7 @@ _KEEP_TURNS = 6        # 12 messages (6 user + 6 agent)
 _COMPACT_AFTER = 10    # compact once history exceeds this many turns
 
 
+@observe(name="load_history", type="span")
 def load_history(session_id: str) -> list[dict]:
     """Return history as list of {role, content} dicts for the LLM.
 
@@ -122,6 +129,7 @@ def load_history(session_id: str) -> list[dict]:
     return history
 
 
+@observe(name="needs_compaction", type="span")
 def needs_compaction(session_id: str) -> bool:
     """True if this session has more than _COMPACT_AFTER turns without a summary."""
     if not session_id:
@@ -151,6 +159,7 @@ def needs_compaction(session_id: str) -> bool:
     return True
 
 
+@observe(name="save_summary", type="span")
 def save_summary(session_id: str, summary: str):
     """Store a compacted summary, covering everything up to (but not including)
     the most recent _KEEP_TURNS turns."""
@@ -174,6 +183,7 @@ def save_summary(session_id: str, summary: str):
         )
 
 
+@observe(name="clear_session", type="span")
 def clear_session(session_id: str):
     with _conn() as db:
         db.execute("DELETE FROM chat_messages WHERE session_id = ?", (session_id,))
@@ -182,6 +192,7 @@ def clear_session(session_id: str):
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
+@observe(name="_to_llm_fmt", type="span")
 def _to_llm_fmt(messages: list[dict]) -> list[dict]:
     return [
         {"role": "user" if m["role"] == "user" else "assistant", "content": m["content"]}

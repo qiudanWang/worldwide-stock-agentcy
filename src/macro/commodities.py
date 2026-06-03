@@ -5,10 +5,12 @@ import pandas as pd
 from datetime import datetime
 from src.common.config import load_yaml
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("macro.commodities")
 
 
+@observe(name="fetch_yf_macro_series", type="tool")
 def fetch_yf_macro_series(symbol, name, days=60):
     """Fetch a single yfinance time series for a macro indicator.
 
@@ -33,6 +35,7 @@ def fetch_yf_macro_series(symbol, name, days=60):
         return pd.DataFrame()
 
 
+@observe(name="fetch_all_yf_macro", type="tool")
 def fetch_all_yf_macro(days=60):
     """Fetch all yfinance-sourced macro indicators (commodities, currencies, sentiment).
 
@@ -59,6 +62,7 @@ def fetch_all_yf_macro(days=60):
     return result
 
 
+@observe(name="get_macro_latest", type="tool")
 def get_macro_latest(macro_df):
     """Get the latest value for each macro indicator.
 

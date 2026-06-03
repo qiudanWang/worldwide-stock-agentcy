@@ -2,10 +2,12 @@
 
 from src.common.config import load_yaml
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("alerts.macro")
 
 
+@observe(name="check_macro_alerts", type="tool")
 def check_macro_alerts(macro_latest, yield_curve=None):
     """Generate macro alerts from latest indicator values.
 

@@ -259,7 +259,6 @@ def _rebalance_dates(all_dates: pd.DatetimeIndex, timeframe: str) -> list[pd.Tim
 # Yearly cohort mode
 # ---------------------------------------------------------------------------
 
-@observe(name="_compute_yearly_cohort", type="tool")
 def _compute_yearly_cohort(
     tickers: list[str],
     history: dict[str, pd.DataFrame],
@@ -309,7 +308,6 @@ def _compute_yearly_cohort(
     return total_return, trades
 
 
-@observe(name="_run_yearly_mode", type="tool")
 def _run_yearly_mode(
     market: str,
     universe_source: dict,

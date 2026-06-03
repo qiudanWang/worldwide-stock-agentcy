@@ -21,10 +21,12 @@ from src.agents.data_agent import _enrich_subsector_cn
 from src.universe.yf_universe import enrich_subsector_yf
 from src.common.config import get_data_path
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("backfill.subsector")
 
 
+@observe(name="backfill_market", type="tool")
 def backfill_market(market: str):
     path = get_data_path("markets", market, "universe.parquet")
     if not os.path.exists(path):

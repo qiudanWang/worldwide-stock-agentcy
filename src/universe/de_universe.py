@@ -5,6 +5,7 @@ import pandas as pd
 import yfinance as yf
 from src.common.config import load_yaml, get_data_path
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("universe.de")
 
@@ -41,6 +42,7 @@ _EXTRA_SEED_TICKERS = [
 ]
 
 
+@observe(name="_try_boerse_api", type="tool")
 def _try_boerse_api() -> list[dict] | None:
     """Attempt to fetch tech listings from the Börse Frankfurt API."""
     try:
@@ -105,6 +107,7 @@ def _try_boerse_api() -> list[dict] | None:
         return None
 
 
+@observe(name="_validate_with_yfinance", type="tool")
 def _validate_with_yfinance(tickers: list[str], suffix: str = ".DE") -> list[dict]:
     """Validate tickers via yfinance, keeping only tech-related ones."""
     rows = []
@@ -140,6 +143,7 @@ def _validate_with_yfinance(tickers: list[str], suffix: str = ".DE") -> list[dic
     return rows
 
 
+@observe(name="_get_seed_tickers", type="tool")
 def _get_seed_tickers() -> list[str]:
     """Collect seed tickers from the static watchlist plus extras."""
     tickers = set(_EXTRA_SEED_TICKERS)
@@ -153,6 +157,7 @@ def _get_seed_tickers() -> list[str]:
     return sorted(tickers)
 
 
+@observe(name="build_de_tech_universe", type="tool")
 def build_de_tech_universe() -> pd.DataFrame:
     """Fetch DE tech stocks dynamically from Börse Frankfurt or yfinance.
 
@@ -195,6 +200,7 @@ def build_de_tech_universe() -> pd.DataFrame:
     return _fallback_watchlist()
 
 
+@observe(name="_save", type="tool")
 def _save(df: pd.DataFrame) -> None:
     """Save universe to processed directory."""
     path = get_data_path("processed", "de_tech_universe.parquet")
@@ -202,6 +208,7 @@ def _save(df: pd.DataFrame) -> None:
     log.info(f"Saved to {path}")
 
 
+@observe(name="_fallback_watchlist", type="tool")
 def _fallback_watchlist() -> pd.DataFrame:
     """Load the static YAML watchlist as fallback."""
     from src.universe.yf_universe import build_yf_universe

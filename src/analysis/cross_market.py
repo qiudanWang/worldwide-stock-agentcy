@@ -2,10 +2,12 @@
 
 import pandas as pd
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("analysis.crossmarket")
 
 
+@observe(name="detect_cross_market_divergence", type="tool")
 def detect_cross_market_divergence(sector_perf, threshold=0.03):
     """Detect same-sector divergence across markets.
 
@@ -50,6 +52,7 @@ def detect_cross_market_divergence(sector_perf, threshold=0.03):
     return divergences
 
 
+@observe(name="detect_index_breakout", type="tool")
 def detect_index_breakout(index_data, lookback_days=20):
     """Detect indices that break their N-day high or low.
 

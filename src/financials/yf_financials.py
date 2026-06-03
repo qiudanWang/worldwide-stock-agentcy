@@ -14,6 +14,7 @@ Schema (long format — one row per ticker × period):
 import time
 import pandas as pd
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("financials.yf")
 
@@ -29,6 +30,7 @@ _GROSS_ROWS   = ["Gross Profit"]
 _OPER_ROWS    = ["Operating Income", "EBIT"]
 
 
+@observe(name="_pick", type="tool")
 def _pick(df: pd.DataFrame, candidates: list):
     for name in candidates:
         if name in df.index:
@@ -36,6 +38,7 @@ def _pick(df: pd.DataFrame, candidates: list):
     return None
 
 
+@observe(name="_yoy", type="tool")
 def _yoy(current, prior):
     try:
         if prior is not None and abs(prior) > 0:
@@ -45,6 +48,7 @@ def _yoy(current, prior):
     return None
 
 
+@observe(name="_to_yi", type="tool")
 def _to_yi(val) -> float | None:
     """Convert raw yfinance value (in base currency units) to 亿 (×10^8)."""
     try:
@@ -55,6 +59,7 @@ def _to_yi(val) -> float | None:
         return None
 
 
+@observe(name="_parse_income", type="tool")
 def _parse_income(fin: pd.DataFrame, period_type: str, ticker: str, market: str) -> list:
     """Parse a yfinance income statement DataFrame into period dicts."""
     if fin is None or fin.empty:
@@ -120,6 +125,7 @@ def _parse_income(fin: pd.DataFrame, period_type: str, ticker: str, market: str)
     return rows
 
 
+@observe(name="fetch_yf_financials_one", type="tool")
 def fetch_yf_financials_one(ticker: str, market: str) -> list:
     """Fetch annual + quarterly financials for a single ticker."""
     import yfinance as yf
@@ -147,6 +153,7 @@ def fetch_yf_financials_one(ticker: str, market: str) -> list:
         return []
 
 
+@observe(name="fetch_yf_financials_batch", type="tool")
 def fetch_yf_financials_batch(tickers: list, market: str, delay: float = 0.5) -> pd.DataFrame:
     """Fetch multi-period financials for a list of tickers in a market.
 

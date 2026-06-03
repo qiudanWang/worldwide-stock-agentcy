@@ -5,6 +5,7 @@ import requests
 import pandas as pd
 from src.common.config import get_data_path
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("universe.tw")
 
@@ -40,6 +41,7 @@ TECH_INDUSTRY_KEYWORDS = [
 ]
 
 
+@observe(name="_matches_tw_tech", type="tool")
 def _matches_tw_tech(industry: str) -> bool:
     """Return True if the industry string matches Taiwan tech industries."""
     industry = (industry or "").strip()
@@ -55,6 +57,7 @@ def _matches_tw_tech(industry: str) -> bool:
     return False
 
 
+@observe(name="build_tw_tech_universe", type="tool")
 def build_tw_tech_universe() -> pd.DataFrame:
     """Fetch Taiwanese tech stocks dynamically from TWSE ISIN listing.
 
@@ -162,6 +165,7 @@ def build_tw_tech_universe() -> pd.DataFrame:
     return result
 
 
+@observe(name="_fallback_watchlist", type="tool")
 def _fallback_watchlist() -> pd.DataFrame:
     """Load the static YAML watchlist as fallback."""
     from src.universe.yf_universe import build_yf_universe

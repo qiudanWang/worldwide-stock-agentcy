@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 
 import requests
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("macro.polymarket")
 
@@ -36,6 +37,7 @@ RELEVANT_KEYWORDS = [
 HEADERS = {"User-Agent": "GlobalMarketMonitor/1.0"}
 
 
+@observe(name="_yes_prob", type="tool")
 def _yes_prob(market):
     """Extract YES probability from outcomePrices field."""
     try:
@@ -55,11 +57,13 @@ def _yes_prob(market):
         return None
 
 
+@observe(name="_is_relevant", type="tool")
 def _is_relevant(question):
     q = question.lower()
     return any(kw in q for kw in RELEVANT_KEYWORDS)
 
 
+@observe(name="fetch_polymarket_signals", type="tool")
 def fetch_polymarket_signals(limit=200, min_volume=1000):
     """Fetch relevant active prediction markets from Polymarket.
 
@@ -128,6 +132,7 @@ def fetch_polymarket_signals(limit=200, min_volume=1000):
     return results
 
 
+@observe(name="fetch_and_save", type="tool")
 def fetch_and_save(out_path):
     """Fetch signals and save to JSON."""
     import json as _json

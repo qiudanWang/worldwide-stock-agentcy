@@ -8,6 +8,7 @@ from datetime import datetime
 from src.agents.base import BaseAgent, AgentResult
 from src.common.config import get_data_path, load_yaml
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("agent.signal")
 
@@ -15,11 +16,13 @@ log = get_logger("agent.signal")
 class SignalAgent(BaseAgent):
     """Monitors capital flows and generates local alerts for a single market."""
 
+    @observe(name="SignalAgent.__init__", type="span")
     def __init__(self, name, market, market_config, depends_on=None):
         super().__init__(name, agent_type="signal", market=market,
                          depends_on=depends_on)
         self.market_config = market_config
 
+    @observe(name="SignalAgent.run", type="agent")
     def run(self) -> AgentResult:
         market = self.market
         today = datetime.now().strftime("%Y%m%d")
@@ -92,6 +95,7 @@ class SignalAgent(BaseAgent):
             errors=errors,
         )
 
+    @observe(name="SignalAgent._fetch_capital_flow", type="tool")
     def _fetch_capital_flow(self):
         """Fetch capital flow data for this market."""
         flow_source = self.market_config.get("capital_flow_source")
@@ -125,6 +129,7 @@ class SignalAgent(BaseAgent):
 
         return pd.DataFrame()
 
+    @observe(name="SignalAgent._check_volume_alerts", type="tool")
     def _check_volume_alerts(self):
         """Check for volume spikes in today's market data."""
         today = datetime.now().strftime("%Y%m%d")
@@ -164,6 +169,7 @@ class SignalAgent(BaseAgent):
 
         return alerts
 
+    @observe(name="SignalAgent._check_news_alerts", type="tool")
     def _check_news_alerts(self):
         """Check for news spikes in this market's news data."""
         market = self.market
@@ -194,6 +200,7 @@ class SignalAgent(BaseAgent):
 
         return alerts
 
+    @observe(name="SignalAgent._check_capital_flow_alerts", type="tool")
     def _check_capital_flow_alerts(self, capital_flow):
         """Check for significant capital flow events."""
         if capital_flow.empty:
@@ -233,6 +240,7 @@ class SignalAgent(BaseAgent):
 
         return alerts
 
+    @observe(name="SignalAgent._check_price_alerts", type="tool")
     def _check_price_alerts(self):
         """Check for stocks with large daily price moves (>= 5% up or down)."""
         today = datetime.now().strftime("%Y%m%d")
@@ -275,6 +283,7 @@ class SignalAgent(BaseAgent):
 
         return alerts
 
+    @observe(name="SignalAgent._check_gap_alerts", type="tool")
     def _check_gap_alerts(self):
         """Check for stocks with significant gaps (open vs previous close >= 3%)."""
         today = datetime.now().strftime("%Y%m%d")

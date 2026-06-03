@@ -8,12 +8,15 @@ import json
 import os
 import requests
 
+from src.common.tracing import observe
+
 SEARXNG_URL = os.getenv("SEARXNG_URL", "http://localhost:8080")
 
 # ---------------------------------------------------------------------------
 # Web search via local SearXNG
 # ---------------------------------------------------------------------------
 
+@observe(name="_searxng_search", type="tool")
 def _searxng_search(query: str, language: str = "en-US", max_results: int = 5) -> str:
     try:
         r = requests.get(
@@ -40,6 +43,7 @@ def _searxng_search(query: str, language: str = "en-US", max_results: int = 5) -
 # Tool executor
 # ---------------------------------------------------------------------------
 
+@observe(name="execute_tool", type="tool")
 def execute_tool(name: str, inputs: dict, context: dict, data_dir: str) -> str:
     """Dispatch a tool call to its implementation. Returns a string for the LLM."""
     try:

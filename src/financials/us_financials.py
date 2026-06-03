@@ -1,10 +1,12 @@
 import yfinance as yf
 import pandas as pd
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("financials.us")
 
 
+@observe(name="fetch_us_financials", type="tool")
 def fetch_us_financials(ticker):
     """Fetch key financial indicators for a single US stock."""
     try:
@@ -51,6 +53,7 @@ def fetch_us_financials(ticker):
         return {}
 
 
+@observe(name="fetch_us_financials_batch", type="tool")
 def fetch_us_financials_batch(tickers):
     """Fetch financials for a list of US tickers."""
     results = []
@@ -68,6 +71,7 @@ def fetch_us_financials_batch(tickers):
     return df
 
 
+@observe(name="_get_next_earnings", type="tool")
 def _get_next_earnings(info):
     try:
         ts = info.get("mostRecentQuarter")

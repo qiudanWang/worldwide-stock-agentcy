@@ -1,10 +1,12 @@
 import pandas as pd
 from src.common.config import load_yaml
 from src.common.logger import get_logger
+from src.common.tracing import observe
 
 log = get_logger("alerts.capital")
 
 
+@observe(name="check_capital_flow_alerts", type="tool")
 def check_capital_flow_alerts(northbound_flow_df):
     """Check for significant northbound capital flow."""
     rules = load_yaml("alert_rules.yaml")
