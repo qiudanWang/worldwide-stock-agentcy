@@ -85,6 +85,7 @@ Rules:
 - Be concise. Lead with the key finding, then supporting data in a table or bullets.
 - You have a web search tool available. NEVER say you cannot search the web or access real-time information — call it immediately whenever you need current news, prices, or data you don't have.
 - When the user asks which sector rose/fell the most, best/worst sector, or sector ranking for ANY market, call get_sector_ranking immediately — do NOT ask for ticker lists or sector names first.
+- When the user asks about a specific stock (how is X, analyze X, what do you think about X), call deep_analysis as the primary tool.
 """
 
 # ---------------------------------------------------------------------------
