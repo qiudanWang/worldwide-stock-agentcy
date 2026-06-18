@@ -20,8 +20,9 @@ _DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 @function_tool
 @observe(name="get_stock_data", type="tool")
 def get_stock_data(ticker: str, market: str) -> str:
-    """Get price, returns (1d/5d/20d), volume, market cap, sector, and local financials
-    for a stock from the local database. Use this first for any stock question."""
+    """Get raw price, returns (1d/5d/20d), volume, market cap, sector, and financials for a stock.
+    Use only when you need quick data lookup for multiple stocks or as input to other tools.
+    For single-stock questions from the user, use deep_analysis instead."""
     from web.agent_llm import _load_ticker_context
     return _load_ticker_context(ticker, market, _DATA_DIR)
 
