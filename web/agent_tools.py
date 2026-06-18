@@ -62,10 +62,13 @@ def get_sector_ranking(market: str, period: str = "1d") -> str:
 
 @function_tool
 @observe(name="deep_analysis", type="tool")
-def deep_analysis(ticker: str) -> str:
-    """Run deep multi-agent analysis: fundamentals + sentiment + technicals + bull/bear debate.
-    Takes 30-60s. Only use when the user explicitly asks for deep/full analysis."""
+def deep_analysis(ticker: str, market: str) -> str:
+    """Run deep multi-agent analysis on a stock: fundamentals, sentiment, technicals, and bull/bear debate.
+    Takes 30-60s. Only call when the user explicitly asks for deep, full, or comprehensive analysis."""
+    from web.agent_llm import trading_agents_analyze
     from web.local_trading_agent import local_trading_analyze
+    if market == "US":
+        return trading_agents_analyze(ticker)
     return local_trading_analyze(ticker, _DATA_DIR)
 
 
