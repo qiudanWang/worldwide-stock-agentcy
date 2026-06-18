@@ -140,7 +140,9 @@ def agent_chat(
         return result.final_output
 
     try:
-        response = asyncio.run(_run())
+        import contextvars
+        ctx = contextvars.copy_context()
+        response = ctx.run(asyncio.run, _run())
     except Exception as e:
         response = f"Agent error: {e}"
 
