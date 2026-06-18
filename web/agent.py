@@ -139,14 +139,7 @@ def agent_chat(
         return result.final_output
 
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                future = pool.submit(asyncio.run, _run())
-                response = future.result()
-        else:
-            response = loop.run_until_complete(_run())
+        response = asyncio.run(_run())
     except Exception as e:
         response = f"Agent error: {e}"
 
