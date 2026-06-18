@@ -100,6 +100,9 @@ def fetch_cn_batch(tickers):
                             df = df.rename(columns={df.columns[0]: "date"})
                         if df.empty or "close" not in df.columns or df["close"].isna().all():
                             continue
+                        df = df.dropna(subset=["close"])
+                        if df.empty:
+                            continue
                         orig_ticker = ticker_map[yf_sym]
                         df["ticker"] = orig_ticker
                         df["market"] = "CN"
@@ -117,6 +120,9 @@ def fetch_cn_batch(tickers):
                 if not df.empty and "close" in df.columns:
                     if "date" not in df.columns:
                         df = df.rename(columns={df.columns[0]: "date"})
+                    df = df.dropna(subset=["close"])
+                    if df.empty:
+                        continue
                     orig_ticker = ticker_map.get(yf_syms[0], valid[0][0])
                     df["ticker"] = orig_ticker
                     df["market"] = "CN"

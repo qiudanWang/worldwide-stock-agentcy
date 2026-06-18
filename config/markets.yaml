@@ -46,7 +46,7 @@ markets:
   HK:
     name: Hong Kong
     source: yfinance
-    ticker_suffix: ".HK"
+    ticker_suffix: ""
     currency: HKD
     timezone: Asia/Hong_Kong
     indices:

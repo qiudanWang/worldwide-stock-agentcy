@@ -1274,7 +1274,6 @@ def _web_sector_analyze(sector_query: str, markets: list, date: str,
         local_enrichment = _web_to_local_enrichment(
             combined_web, f"sector analysis: {sector_query}",
             data_dir, markets[0] if len(markets) == 1 else "ALL",
-            provider, api_key
         )
 
     # ── Step 3: hybrid LLM analysis ──────────────────────────────────────────
@@ -1674,4 +1673,81 @@ def local_sector_analyze(sector_query: str, market: str, data_dir: str) -> str:
     ]
     if web_sources_footer:
         lines.append(web_sources_footer)
+    return "\n".join(lines)
+
+
+@observe(name="local_sector_ranking", type="tool")
+def local_sector_ranking(market: str, data_dir: str, period: str = "1d") -> str:
+    """Rank ALL sectors in a market by average return for a given period (1d/5d/20d).
+
+    Returns a formatted table so the agent can answer "which sector rose the most".
+    """
+    import glob
+    import numpy as np
+
+    uni_path = os.path.join(data_dir, "markets", market, "universe.parquet")
+    if not os.path.exists(uni_path):
+        return f"No universe data for {market}."
+
+    uni = pd.read_parquet(uni_path)
+    if "sector" not in uni.columns:
+        return f"Universe for {market} has no sector column."
+
+    # Latest market-daily file
+    pattern = os.path.join(data_dir, "markets", market, "market_daily_*.parquet")
+    files = sorted(glob.glob(pattern))
+    if not files:
+        return f"No market_daily data found for {market}."
+
+    market_df = pd.read_parquet(files[-1])
+    signal_date = market_df["date"].max()
+    date_np = np.datetime64(signal_date)
+
+    period_map = {"1d": 1, "5d": 5, "20d": 20}
+    lookback = period_map.get(period.lower(), 1)
+
+    rows = []
+    for ticker, df in market_df.groupby("ticker"):
+        df = df.sort_values("date").reset_index(drop=True)
+        idx = int(df["date"].values.searchsorted(date_np, side="right"))
+        if idx < lookback + 1:
+            continue
+        c = df["close"].values
+        ret = c[idx - 1] / c[idx - lookback - 1] - 1
+        rows.append({"ticker": ticker, "ret": ret})
+
+    if not rows:
+        return f"Insufficient price data for {market}."
+
+    ret_df = pd.DataFrame(rows).merge(uni[["ticker", "sector"]], on="ticker", how="left")
+    ret_df = ret_df.dropna(subset=["sector"])
+
+    sector_perf = (
+        ret_df.groupby("sector")["ret"]
+        .agg(avg_ret="mean", count="count")
+        .sort_values("avg_ret", ascending=False)
+        .reset_index()
+    )
+
+    label = period.upper()
+    lines = [
+        f"## {market} Sector Ranking — {label} Return (as of {signal_date.date()})",
+        "",
+        f"{'Rank':<5} {'Sector':<30} {'Avg Return':>12} {'# Stocks':>10}",
+        "-" * 60,
+    ]
+    for rank, row in sector_perf.iterrows():
+        sign = "+" if row["avg_ret"] >= 0 else ""
+        lines.append(
+            f"{rank+1:<5} {str(row['sector']):<30} {sign}{row['avg_ret']*100:>10.2f}%"
+            f" {int(row['count']):>10}"
+        )
+
+    best = sector_perf.iloc[0]
+    worst = sector_perf.iloc[-1]
+    lines += [
+        "",
+        f"**Top sector:** {best['sector']}  {'+' if best['avg_ret']>=0 else ''}{best['avg_ret']*100:.2f}%",
+        f"**Worst sector:** {worst['sector']}  {'+' if worst['avg_ret']>=0 else ''}{worst['avg_ret']*100:.2f}%",
+    ]
     return "\n".join(lines)

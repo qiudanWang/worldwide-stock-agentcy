@@ -268,7 +268,6 @@
     <div class="tf-pill active" data-tf="daily"   onclick="switchTf('daily')">Daily</div>
     <div class="tf-pill"        data-tf="weekly"  onclick="switchTf('weekly')">Weekly</div>
     <div class="tf-pill"        data-tf="monthly" onclick="switchTf('monthly')">Monthly</div>
-    <div class="tf-pill"        data-tf="yearly"  onclick="switchTf('yearly')">Yearly</div>
 </div>
 
 <!-- ── Main panel: strategy selector ───────────────────────────────────── -->
@@ -363,7 +362,7 @@
 </div>
 
 <!-- ── Results (one block, switches with tf) ────────────────────────────── -->
-{% for tf in ['daily', 'weekly', 'monthly', 'yearly'] %}
+{% for tf in ['daily', 'weekly', 'monthly'] %}
 <div class="tf-result {{ 'active' if tf == 'daily' }}" id="result-{{ tf }}">
 
     <!-- Backtest caveats — shown after results load -->
@@ -409,13 +408,6 @@
         <canvas id="chart-{{ tf }}" height="200"></canvas>
     </div>
 
-    {% if tf == 'yearly' %}
-    <div class="chart-wrap" id="cohort-chart-wrap" style="display:none;">
-        <h3>Annual Returns</h3>
-        <canvas id="chart-cohorts" height="140"></canvas>
-    </div>
-    {% endif %}
-
     <!-- Per-strategy breakdown (collapsed) -->
     <div id="detail-section-{{ tf }}">
         <div class="detail-toggle" id="detail-toggle-{{ tf }}" onclick="toggleDetail('{{ tf }}')">
@@ -456,8 +448,8 @@ var _charts   = {};
 var _cohortChart = null;
 var _selectedBuiltins = [];
 // Per-timeframe NL signals and ticker lists
-var _nlByTf = {daily:[], weekly:[], monthly:[], yearly:[]};
-var _tkByTf  = {daily:[], weekly:[], monthly:[], yearly:[]};
+var _nlByTf = {daily:[], weekly:[], monthly:[]};
+var _tkByTf  = {daily:[], weekly:[], monthly:[]};
 
 // Default dates
 (function() {
@@ -476,10 +468,31 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // ── Market ────────────────────────────────────────────────────────────────────
 function selectMarket(code) {
+    if (code === _market) return;
+    // Save current market's status before switching
+    _marketState[_market] = { tfStatus: _tfStatus };
     _market = code;
     document.querySelectorAll('.mkt-pill').forEach(function(b) {
         b.classList.toggle('active', b.dataset.market === code);
     });
+    // Restore new market's status (or empty if first visit)
+    var mState = _marketState[code] || {};
+    _tfStatus = mState.tfStatus || {};
+    // Clear DOM result panels
+    ['daily','weekly','monthly'].forEach(function(tf) { clearResults(tf); });
+    // Re-render from this market's session cache
+    restoreResults();
+    restorePreview();
+    // Update status bar for active timeframe
+    var s = _tfStatus[_activeTf];
+    if (s) {
+        _applyStatus(s.state, s.text);
+        document.getElementById('run-info').textContent = s.info || '';
+    } else {
+        _applyStatus('', 'Not run');
+        document.getElementById('run-info').textContent = '';
+    }
+    document.getElementById('preview-panel').style.display = 'none';
 }
 
 // ── Strategy nav ──────────────────────────────────────────────────────────────
@@ -554,7 +567,7 @@ function toggleBuiltin(btn) {
     var idx  = _selectedBuiltins.indexOf(name);
     if (idx === -1) { _selectedBuiltins.push(name); btn.classList.add('active'); }
     else            { _selectedBuiltins.splice(idx, 1); btn.classList.remove('active'); }
-    try { sessionStorage.removeItem('bt_preview'); } catch(e) {}
+    try { sessionStorage.removeItem('bt_preview_'+_market); } catch(e) {}
     document.getElementById('preview-panel').style.display = 'none';
 }
 
@@ -569,7 +582,7 @@ function toggleRef(id) {
 // ── Natural Language signals ───────────────────────────────────────────────────
 // _nlByTf[tf] is the source of truth for each timeframe's signals
 var _nlIdSeq  = 0;
-var _nlModeTf = {daily:'union', weekly:'union', monthly:'union', yearly:'union'};
+var _nlModeTf = {daily:'union', weekly:'union', monthly:'union'};
 
 function setNlMode(mode) {
     _nlModeTf[_activeTf] = mode;
@@ -600,7 +613,7 @@ function syncNlCode(id) {
 
 function initNlSignals() {
     // Load per-tf state from localStorage; init with one empty signal if nothing saved
-    ['daily','weekly','monthly','yearly'].forEach(function(tf) {
+    ['daily','weekly','monthly'].forEach(function(tf) {
         try {
             var saved = localStorage.getItem('bt_nl_' + tf);
             if (saved) {
@@ -709,7 +722,7 @@ function generateNlCode(id) {
         wrap.style.display = 'block';
         saveNlSignals();
         // Invalidate stale preview — new code means old preview results are outdated
-        try { sessionStorage.removeItem('bt_preview'); } catch(e) {}
+        try { sessionStorage.removeItem('bt_preview_'+_market); } catch(e) {}
         document.getElementById('preview-panel').style.display = 'none';
     })
     .catch(function(e){ showStatus('nl-status-' + id, 'err', e.message); });
@@ -817,9 +830,9 @@ function previewSignal() {
             err.textContent = data.error; err.style.display = 'block'; return;
         }
         if (!data.tickers || !data.tickers.length) {
-            sessionStorage.removeItem('bt_preview');
+            sessionStorage.removeItem('bt_preview_'+_market);
         } else {
-            try { sessionStorage.setItem('bt_preview', JSON.stringify(data)); } catch(e) {}
+            try { sessionStorage.setItem('bt_preview_'+_market, JSON.stringify(data)); } catch(e) {}
         }
         renderPreviewData(data);
     })
@@ -867,7 +880,7 @@ function renderPreviewData(data) {
 
 function restoreResults() {
     try {
-        var saved = JSON.parse(sessionStorage.getItem('bt_results') || '{}');
+        var saved = JSON.parse(sessionStorage.getItem('bt_results_'+_market) || '{}');
         Object.keys(saved).forEach(function(tf) {
             var entry = saved[tf];
             renderResult(tf, entry.data);
@@ -885,7 +898,7 @@ function restoreResults() {
 
 function restorePreview() {
     try {
-        var saved = sessionStorage.getItem('bt_preview');
+        var saved = sessionStorage.getItem('bt_preview_'+_market);
         if (saved) renderPreviewData(JSON.parse(saved));
     } catch(e) {}
 }
@@ -910,7 +923,7 @@ function buildSignalPayload() {
     } else {
         if (!_tkByTf[_activeTf].length) { alert('Add at least one ticker.'); return null; }
         universeSource = {type: 'custom', tickers: _tkByTf[_activeTf]};
-        signal = {type: 'builtin', name: 'yearly_momentum_252d'};
+        signal = {type: 'builtin', name: 'monthly_sector_momentum_20d'};
     }
     return {universe_source: universeSource, signal: signal};
 }
@@ -953,9 +966,9 @@ function runBacktest(force) {
         // Persist result so refresh restores it
         var indivSignals = collectIndividualSignals();
         try {
-            var saved = JSON.parse(sessionStorage.getItem('bt_results') || '{}');
+            var saved = JSON.parse(sessionStorage.getItem('bt_results_'+_market) || '{}');
             saved[_activeTf] = {data: data, info: document.getElementById('run-info').textContent, payload: payload, indivSignals: indivSignals};
-            sessionStorage.setItem('bt_results', JSON.stringify(saved));
+            sessionStorage.setItem('bt_results_'+_market, JSON.stringify(saved));
         } catch(e) {}
         // Run per-strategy detail in background
         runStrategyDetails(_activeTf, payload, indivSignals);
@@ -989,10 +1002,6 @@ function renderResult(tf, data) {
     if (data.equity_curve && data.equity_curve.length > 1) {
         document.getElementById('chart-wrap-'+tf).style.display = 'block';
         renderEquityChart(tf, data.equity_curve);
-    }
-    if (tf === 'yearly' && data.cohorts && data.cohorts.length) {
-        document.getElementById('cohort-chart-wrap').style.display = 'block';
-        renderCohortChart(data.cohorts);
     }
     renderTrades(tf, data.trades || []);
 }
@@ -1097,7 +1106,8 @@ function esc(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-var _tfStatus = {};  // tf -> {state, text, info}
+var _tfStatus    = {};  // tf -> {state, text, info}
+var _marketState = {};  // market -> {tfStatus}
 
 function setStatus(state, text) {
     _tfStatus[_activeTf] = {state: state, text: text};
@@ -1119,10 +1129,6 @@ function clearResults(tf) {
     var cnt = document.getElementById('trades-count-'+tf); if (cnt) cnt.textContent='';
     if (_charts[tf]) { _charts[tf].destroy(); _charts[tf]=null; }
     var cw = document.getElementById('chart-wrap-'+tf); if (cw) cw.style.display='none';
-    if (tf==='yearly') {
-        if (_cohortChart) { _cohortChart.destroy(); _cohortChart=null; }
-        var cc = document.getElementById('cohort-chart-wrap'); if (cc) cc.style.display='none';
-    }
     // Clear per-strategy detail cards but keep section visible
     var dc = document.getElementById('strategy-cards-'+tf); if (dc) dc.innerHTML='';
     var dl = document.getElementById('detail-loading-'+tf); if (dl) dl.style.display='none';
@@ -1170,7 +1176,7 @@ function collectIndividualSignals() {
             }
         });
     } else if (_sigType === 'manual' && _tkByTf[_activeTf].length) {
-        signals.push({ label: 'Ticker List', universe_source: {type:'custom', tickers:_tkByTf[_activeTf].slice()}, signal: {type:'builtin', name:'yearly_momentum_252d'} });
+        signals.push({ label: 'Ticker List', universe_source: {type:'custom', tickers:_tkByTf[_activeTf].slice()}, signal: {type:'builtin', name:'monthly_sector_momentum_20d'} });
     }
     return signals;
 }

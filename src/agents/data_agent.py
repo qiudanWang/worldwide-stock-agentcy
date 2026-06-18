@@ -58,13 +58,20 @@ class DataAgent(BaseAgent):
 
     @observe(name="DataAgent.should_run", type="span")
     def should_run(self):
-        """Skip if today's market data snapshot already exists."""
+        """Skip only if today's snapshot exists and contains valid (non-NaN) close data."""
         today = datetime.now().strftime("%Y%m%d")
         path = get_data_path("markets", self.market,
                              f"market_daily_{today}.parquet")
         if os.path.exists(path):
-            log.info(f"[{self.name}] Today's snapshot exists, skipping")
-            return False
+            try:
+                df = pd.read_parquet(path)
+                today_dt = pd.Timestamp(today)
+                has_today = (pd.to_datetime(df["date"]).dt.normalize() == today_dt).any()
+                if has_today:
+                    log.info(f"[{self.name}] Today's snapshot exists with valid data, skipping")
+                    return False
+            except Exception:
+                pass
         return True
 
     @observe(name="DataAgent.run", type="agent")
@@ -340,11 +347,12 @@ class DataAgent(BaseAgent):
         """Fetch market cap data for this market."""
         # Check cache freshness — also invalidate if coverage is < 50% of current universe
         cap_path = get_data_path("markets", self.market, "market_cap.parquet")
-        if not self.force and os.path.exists(cap_path):
+        if os.path.exists(cap_path):
             age = datetime.now() - datetime.fromtimestamp(os.path.getmtime(cap_path))
             cached = pd.read_parquet(cap_path)
             coverage = len(cached) / max(len(tickers), 1)
-            if age < timedelta(days=1) and coverage >= 0.5:
+            market_cap_days = get_settings().get("refresh", {}).get("market_cap_days", 3)
+            if age < timedelta(days=market_cap_days) and coverage >= 0.5:
                 log.info(f"[{self.name}] Market cap cache fresh, skipping")
                 return cached
 

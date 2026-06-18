@@ -1,285 +1,133 @@
-"""Tool schemas and executor for the LiteLLM agent loop.
+"""Tool definitions for the openai-agents SDK.
 
-Each tool maps 1-to-1 to an existing implementation — no logic is duplicated here,
-this file is purely dispatch + schema definitions.
+Each tool is a plain function decorated with @function_tool.
+Business logic lives in local_trading_agent.py / openbb_tools.py — not here.
 """
 
-import json
 import os
-import requests
 
+from agents import function_tool
 from src.common.tracing import observe
 
-SEARXNG_URL = os.getenv("SEARXNG_URL", "http://localhost:8080")
-
-# ---------------------------------------------------------------------------
-# Web search via local SearXNG
-# ---------------------------------------------------------------------------
-
-@observe(name="_searxng_search", type="tool")
-def _searxng_search(query: str, language: str = "en-US", max_results: int = 5) -> str:
-    try:
-        r = requests.get(
-            f"{SEARXNG_URL}/search",
-            params={"q": query, "format": "json", "language": language},
-            timeout=10,
-        )
-        r.raise_for_status()
-        results = r.json().get("results", [])[:max_results]
-        if not results:
-            return "(no results found)"
-        parts = []
-        for item in results:
-            title   = item.get("title", "")
-            content = item.get("content", "")[:400]
-            url     = item.get("url", "")
-            parts.append(f"• {title}\n  {content}\n  {url}")
-        return f"[Search: {query}]\n\n" + "\n\n".join(parts)
-    except Exception as e:
-        return f"(search failed: {e})"
+# data_dir is resolved once at import time
+_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
 
 # ---------------------------------------------------------------------------
-# Tool executor
+# Tools
 # ---------------------------------------------------------------------------
 
-@observe(name="execute_tool", type="tool")
-def execute_tool(name: str, inputs: dict, context: dict, data_dir: str) -> str:
-    """Dispatch a tool call to its implementation. Returns a string for the LLM."""
-    try:
-        if name == "get_stock_data":
-            from web.agent_llm import _load_ticker_context
-            ticker = inputs.get("ticker", "")
-            market = inputs.get("market") or context.get("market", "")
-            return _load_ticker_context(ticker, market, data_dir)
+@function_tool
+@observe(name="get_stock_data", type="tool")
+def get_stock_data(ticker: str, market: str) -> str:
+    """Get price, returns (1d/5d/20d), volume, market cap, sector, and local financials
+    for a stock from the local database. Use this first for any stock question."""
+    from web.agent_llm import _load_ticker_context
+    return _load_ticker_context(ticker, market, _DATA_DIR)
 
-        elif name == "web_search":
-            query = inputs["query"]
-            lang  = "zh-CN" if inputs.get("language") == "zh" else "en-US"
-            return _searxng_search(query, language=lang)
 
-        elif name == "fetch_url":
-            from web.agent_llm import _fetch_url
-            return _fetch_url(inputs["url"])
+@function_tool
+@observe(name="fetch_url", type="tool")
+def fetch_url(url: str) -> str:
+    """Fetch and read the full text of a specific URL (news article, announcement, report)."""
+    from web.agent_llm import _fetch_url
+    return _fetch_url(url)
 
-        elif name == "get_peers":
-            from web.local_trading_agent import local_peers_analyze
-            ticker = inputs["ticker"]
-            market = inputs.get("market") or context.get("market", "CN")
-            return local_peers_analyze(ticker, market, data_dir)
 
-        elif name == "get_sector":
-            from web.local_trading_agent import local_sector_analyze
-            market = inputs.get("market") or context.get("market", "CN")
-            return local_sector_analyze(inputs["sector"], market, data_dir)
+@function_tool
+@observe(name="get_peers", type="tool")
+def get_peers(ticker: str, market: str) -> str:
+    """Get peer company comparison for a stock — peer list with price performance and financials."""
+    from web.local_trading_agent import local_peers_analyze
+    return local_peers_analyze(ticker, market, _DATA_DIR)
 
-        elif name == "deep_analysis":
-            from web.local_trading_agent import local_trading_analyze
-            return local_trading_analyze(inputs["ticker"], data_dir)
 
-        elif name == "get_live_quote":
-            from web.openbb_tools import get_stock_quote
-            return get_stock_quote(inputs["ticker"])
+@function_tool
+@observe(name="get_sector", type="tool")
+def get_sector(sector: str, market: str) -> str:
+    """Analyze a market sector — top stocks, performance ranking, sector trends."""
+    from web.local_trading_agent import local_sector_analyze
+    return local_sector_analyze(sector, market, _DATA_DIR)
 
-        elif name == "get_market_movers":
-            from web.openbb_tools import get_gainers, get_losers, get_most_active
-            t = inputs.get("type", "gainers")
-            if t == "losers":
-                return get_losers()
-            elif t == "active":
-                return get_most_active()
-            else:
-                return get_gainers()
 
-        elif name == "get_indices":
-            from web.openbb_tools import get_major_indices
-            return get_major_indices()
+@function_tool
+@observe(name="get_sector_ranking", type="tool")
+def get_sector_ranking(market: str, period: str = "1d") -> str:
+    """Rank ALL sectors in a market by average return.
+    Use this when the user asks which sector rose the most, sector leaderboard,
+    or best/worst performing sector. period: 1d, 5d, or 20d."""
+    from web.local_trading_agent import local_sector_ranking
+    return local_sector_ranking(market, _DATA_DIR, period)
 
-        elif name == "get_news":
-            from web.openbb_tools import get_company_news
-            return get_company_news(inputs["ticker"])
 
-        elif name == "get_fundamentals":
-            from web.openbb_tools import get_fundamentals
-            return get_fundamentals(inputs["ticker"])
+@function_tool
+@observe(name="deep_analysis", type="tool")
+def deep_analysis(ticker: str) -> str:
+    """Run deep multi-agent analysis: fundamentals + sentiment + technicals + bull/bear debate.
+    Takes 30-60s. Only use when the user explicitly asks for deep/full analysis."""
+    from web.local_trading_agent import local_trading_analyze
+    return local_trading_analyze(ticker, _DATA_DIR)
 
-        else:
-            return f"Unknown tool: {name}"
 
-    except Exception as e:
-        return f"Tool '{name}' failed: {e}"
+@function_tool
+@observe(name="get_live_quote", type="tool")
+def get_live_quote(ticker: str) -> str:
+    """Get live real-time price quote. For non-US add exchange suffix: 0700.HK, 7203.T, 005930.KS"""
+    from web.openbb_tools import get_stock_quote
+    return get_stock_quote(ticker)
+
+
+@function_tool
+@observe(name="get_market_movers", type="tool")
+def get_market_movers(type: str = "gainers") -> str:
+    """Get top gaining, losing, or most active stocks in the US market right now.
+    type: gainers, losers, or active."""
+    from web.openbb_tools import get_gainers, get_losers, get_most_active
+    if type == "losers":
+        return get_losers()
+    elif type == "active":
+        return get_most_active()
+    return get_gainers()
+
+
+@function_tool
+@observe(name="get_indices", type="tool")
+def get_indices() -> str:
+    """Get current levels of major global indices: S&P 500, Nasdaq, Nikkei, HSI, CSI 300, etc."""
+    from web.openbb_tools import get_major_indices
+    return get_major_indices()
+
+
+@function_tool
+@observe(name="get_news", type="tool")
+def get_news(ticker: str) -> str:
+    """Get latest news articles for a company."""
+    from web.openbb_tools import get_company_news
+    return get_company_news(ticker)
+
+
+@function_tool
+@observe(name="get_fundamentals", type="tool")
+def get_fundamentals(ticker: str) -> str:
+    """Get key financial ratios: P/E, EPS, revenue, profit margin, ROE, debt/equity."""
+    from web.openbb_tools import get_fundamentals
+    return get_fundamentals(ticker)
 
 
 # ---------------------------------------------------------------------------
-# Tool schemas (OpenAI / LiteLLM format)
+# Tool list (passed to Agent)
 # ---------------------------------------------------------------------------
 
-TOOL_SCHEMAS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_stock_data",
-            "description": (
-                "Get price, returns (1d/5d/20d), volume, market cap, sector, and local financials "
-                "for a stock from the local database. Use this first for any stock question."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "ticker": {"type": "string", "description": "Stock ticker e.g. 600519, AAPL, 0700"},
-                    "market": {"type": "string", "description": "Market code: CN, US, HK, JP, KR, TW, IN, UK, DE, FR"},
-                },
-                "required": ["ticker", "market"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "web_search",
-            "description": (
-                "Search the internet for real-time news, recent financials, analyst estimates, "
-                "or any information not in local data. "
-                "For CN stocks use the 6-digit ticker code as the query (e.g. '603290'). "
-                "Set language='zh' for Chinese market searches."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query":    {"type": "string"},
-                    "language": {"type": "string", "enum": ["en", "zh"],
-                                 "description": "Use 'zh' for Chinese stocks/news, 'en' otherwise"},
-                },
-                "required": ["query"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "fetch_url",
-            "description": "Fetch and read the full text of a specific URL (news article, announcement, report).",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "url": {"type": "string"},
-                },
-                "required": ["url"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_peers",
-            "description": "Get peer company comparison for a stock — peer list with price performance and financials.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "ticker": {"type": "string"},
-                    "market": {"type": "string"},
-                },
-                "required": ["ticker", "market"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_sector",
-            "description": "Analyze a market sector — top stocks, performance ranking, sector trends.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "sector": {"type": "string", "description": "Sector name e.g. '半导体', 'Technology', 'Consumer'"},
-                    "market": {"type": "string"},
-                },
-                "required": ["sector", "market"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "deep_analysis",
-            "description": (
-                "Run deep multi-agent analysis: fundamentals + sentiment + technicals + bull/bear debate. "
-                "Takes 30-60s. Only use when the user explicitly asks for deep/full analysis."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "ticker": {"type": "string"},
-                },
-                "required": ["ticker"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_live_quote",
-            "description": "Get live real-time price quote. For non-US add exchange suffix: 0700.HK, 7203.T, 005930.KS",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "ticker": {"type": "string"},
-                },
-                "required": ["ticker"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_market_movers",
-            "description": "Get top gaining, losing, or most active stocks in the US market right now.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "type": {"type": "string", "enum": ["gainers", "losers", "active"]},
-                },
-                "required": ["type"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_indices",
-            "description": "Get current levels of major global indices: S&P 500, Nasdaq, Nikkei, HSI, CSI 300, etc.",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_news",
-            "description": "Get latest news articles for a company.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "ticker": {"type": "string"},
-                },
-                "required": ["ticker"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_fundamentals",
-            "description": "Get key financial ratios: P/E, EPS, revenue, profit margin, ROE, debt/equity.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "ticker": {"type": "string"},
-                },
-                "required": ["ticker"],
-            },
-        },
-    },
+ALL_TOOLS = [
+    get_stock_data,
+    fetch_url,
+    get_peers,
+    get_sector,
+    get_sector_ranking,
+    deep_analysis,
+    get_live_quote,
+    get_market_movers,
+    get_indices,
+    get_news,
+    get_fundamentals,
 ]

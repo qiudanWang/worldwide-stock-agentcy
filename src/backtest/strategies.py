@@ -205,46 +205,13 @@ class MonthlySectorMomentum(BaseStrategy):
 
 
 # ---------------------------------------------------------------------------
-# Yearly: 252-Day Momentum
-# ---------------------------------------------------------------------------
-
-class YearlyMomentum252d(BaseStrategy):
-    """
-    Rank by 252-day return desc. Hold top_n stocks, rebalance yearly.
-    """
-    name        = "yearly_momentum_252d"
-    description = "Top 10 by 252-day return — rebalanced yearly"
-    timeframe   = "yearly"
-
-    def __init__(self, top_n: int = 10):
-        self.top_n = top_n
-
-    def select(self, universe_df, history, date):
-        tickers = universe_df["ticker"].tolist()
-        date_np = date.to_datetime64()
-        tk_list, moms = [], []
-        for tk in tickers:
-            closes = _last_n_closes(history, tk, date_np, 253)
-            m = _momentum(closes)
-            if m > float("-inf"):
-                tk_list.append(tk)
-                moms.append(m)
-        if not tk_list:
-            return []
-        arr = np.array(moms)
-        top = np.argsort(arr)[::-1][: self.top_n]
-        return [tk_list[i] for i in top]
-
-
-# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
 STRATEGIES: dict[str, BaseStrategy] = {
-    "daily_volume_breakout":      DailyVolumeBreakout(),
-    "weekly_momentum_5d":         WeeklyMomentum5d(),
+    "daily_volume_breakout":       DailyVolumeBreakout(),
+    "weekly_momentum_5d":          WeeklyMomentum5d(),
     "monthly_sector_momentum_20d": MonthlySectorMomentum(),
-    "yearly_momentum_252d":       YearlyMomentum252d(),
 }
 
 # Default strategy per timeframe
@@ -252,7 +219,6 @@ DEFAULTS: dict[str, str] = {
     "daily":   "daily_volume_breakout",
     "weekly":  "weekly_momentum_5d",
     "monthly": "monthly_sector_momentum_20d",
-    "yearly":  "yearly_momentum_252d",
 }
 
 

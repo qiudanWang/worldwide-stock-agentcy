@@ -44,6 +44,7 @@
         <div class="scroll-table" style="max-height: 500px;">
         <table>
             <tr>
+                <th>Time</th>
                 <th>Mkt</th>
                 <th>Ticker</th>
                 <th>Title</th>
@@ -52,6 +53,7 @@
             </tr>
             {% for r in news %}
             <tr class="news-row-page" data-market="{{ r.get('market', '') }}">
+                <td class="flat" style="white-space:nowrap; color:#8b949e;">{{ r.get('date_str', '') }}</td>
                 <td class="flat">{{ r.get('market', '') }}</td>
                 <td>
                     <a href="/companies/{{ r.ticker }}" style="color:#58a6ff; text-decoration:none; font-weight:600;">{{ r.ticker }}</a>

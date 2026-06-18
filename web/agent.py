@@ -1,50 +1,35 @@
-"""LiteLLM-based agent loop — replaces agent_llm.py.
+"""openai-agents SDK based agent — replaces the hand-rolled LiteLLM loop.
 
-Uses native tool_use (function calling) so the LLM drives which tools to call
-and when to stop, eliminating the hand-rolled JSON planner and all its edge cases.
-
-Drop-in replacement: same signature as agent_llm.agent_chat.
+Uses Agent + Runner with SQLiteSession for persistent conversation history.
+Config is read fresh on every request so web UI changes take effect immediately.
+Supports any OpenAI-compatible endpoint via base_url in llm_config.json.
 """
 
 import json
 import os
 
-import litellm
+from agents import Agent, Runner, WebSearchTool
+from agents.memory.sqlite_session import SQLiteSession
+from agents.memory.session_settings import SessionSettings
 
-from web.agent_tools import TOOL_SCHEMAS, execute_tool
-from src.common.timeout import llm_timeout
+from web.agent_tools import ALL_TOOLS
 from src.common.tracing import observe
 try:
     from traceroot import update_current_span
 except ImportError:
     def update_current_span(**kwargs): pass
 
-litellm.suppress_debug_info = True
-litellm.drop_params = True
-litellm.set_verbose = False
+_OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1"
+
+_DB_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "data", "agent_sessions.db",
+)
 
 # ---------------------------------------------------------------------------
-# System prompt
+# Config (read fresh each call so UI changes take effect without restart)
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = """You are a professional global stock market analyst assistant.
-
-Rules:
-- ALWAYS use tools to get data before answering. Never invent prices, returns, or financial figures.
-- RESPOND IN ENGLISH ONLY. All text — section headers, bullet points, table headers, labels — must be in English.
-- Format numbers consistently: prices to 2 decimal places, returns as percentages (+4.85%), large figures with units (B/M/億).
-- For peer comparisons or multi-stock queries, call get_stock_data for EACH ticker separately.
-- If get_stock_data returns no data for a CN ticker, IMMEDIATELY call web_search using the 6-digit ticker code as the query (e.g. "603986") with language="zh". Do NOT ask the user for permission — just search automatically.
-- After responses that include web_search results, add a brief "## News Highlights" section (3–5 bullets).
-- Be concise. Lead with the key finding, then supporting data in a table or bullets.
-"""
-
-
-# ---------------------------------------------------------------------------
-# Config helpers
-# ---------------------------------------------------------------------------
-
-@observe(name="_load_config", type="span")
 def _load_config() -> dict:
     try:
         path = os.path.join(
@@ -57,31 +42,53 @@ def _load_config() -> dict:
         return {}
 
 
-@observe(name="_make_openai_client", type="span")
-def _make_openai_client():
-    """Build an OpenAI-compatible client from llm_config.json.
+def _resolve_model(cfg: dict):
+    """Return a model string (OpenAI native) or OpenAIChatCompletionsModel (custom endpoint)."""
+    model_name = cfg.get("model", "gpt-4o-mini").strip()
+    api_key    = cfg.get("api_key", "").strip()
+    base_url   = (cfg.get("base_url", "") or _OPENAI_DEFAULT_BASE_URL).strip()
 
-    Uses httpx.Client(verify=False) to match the existing codebase's SSL setup.
-    Returns (client, model_name).
-    """
-    import httpx
-    from openai import OpenAI
+    is_official_openai = base_url.rstrip("/") == _OPENAI_DEFAULT_BASE_URL.rstrip("/")
 
-    cfg      = _load_config()
-    api_key  = cfg.get("api_key", "sk-placeholder").strip() or "sk-placeholder"
-    model    = cfg.get("model", "gpt-4o-mini").strip() or "gpt-4o-mini"
-    base_url = (cfg.get("base_url", "") or "https://api.openai.com/v1").strip()
+    if is_official_openai:
+        # SDK handles auth via OPENAI_API_KEY env var
+        if api_key:
+            os.environ["OPENAI_API_KEY"] = api_key
+        return model_name
+    else:
+        # Custom endpoint — wrap with OpenAIChatCompletionsModel
+        from openai import AsyncOpenAI
+        from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
+        import httpx
 
-    client = OpenAI(
-        api_key=api_key,
-        base_url=base_url,
-        http_client=httpx.Client(verify=False, timeout=llm_timeout()),
-    )
-    return client, model
+        client = AsyncOpenAI(
+            api_key=api_key or "sk-placeholder",
+            base_url=base_url,
+            http_client=httpx.AsyncClient(verify=False),
+        )
+        return OpenAIChatCompletionsModel(model=model_name, openai_client=client)
 
 
 # ---------------------------------------------------------------------------
-# Agent loop
+# System prompt
+# ---------------------------------------------------------------------------
+
+SYSTEM_PROMPT = """You are a professional global stock market analyst assistant.
+
+Rules:
+- ALWAYS use tools to get data before answering. Never invent prices, returns, or financial figures.
+- RESPOND IN ENGLISH ONLY. All text — section headers, bullet points, table headers, labels — must be in English.
+- Format numbers consistently: prices to 2 decimal places, returns as percentages (+4.85%), large figures with units (B/M/億).
+- For peer comparisons or multi-stock queries, call get_stock_data for EACH ticker separately.
+- If get_stock_data returns no data for a CN ticker, IMMEDIATELY use web search with the 6-digit ticker code as the query (e.g. "603986"). Do NOT ask the user for permission — just search automatically.
+- After responses that include web search results, add a brief "## News Highlights" section (3–5 bullets).
+- Be concise. Lead with the key finding, then supporting data in a table or bullets.
+- You have a web search tool available. NEVER say you cannot search the web or access real-time information — call it immediately whenever you need current news, prices, or data you don't have.
+- When the user asks which sector rose/fell the most, best/worst sector, or sector ranking for ANY market, call get_sector_ranking immediately — do NOT ask for ticker lists or sector names first.
+"""
+
+# ---------------------------------------------------------------------------
+# Entry point
 # ---------------------------------------------------------------------------
 
 @observe(name="agent_chat", type="llm")
@@ -90,121 +97,58 @@ def agent_chat(
     market: str | None,
     message: str,
     data_dir: str,
-    chat_history: list | None = None,
     language: str = "English",
     context: dict | None = None,
+    session_id: str | None = None,
 ) -> tuple[str, dict]:
-    """Run the agent loop and return (response_text, updated_context).
+    """Run the agent and return (response_text, updated_context)."""
+    import asyncio
 
-    The LLM decides which tools to call and when it has enough data to answer.
-    No JSON planner, no intent classification — just tool_use in a while loop.
-    """
     context = dict(context or {})
     if market:
         context["market"] = market
 
-    oai_client, model = _make_openai_client()
+    cfg   = _load_config()
+    model = _resolve_model(cfg)
+    session_limit = cfg.get("session_limit", 20)
+
+    update_current_span(
+        model=cfg.get("model", ""),
+        input={"message": message, "market": market, "agent_type": agent_type},
+    )
 
     system = SYSTEM_PROMPT
     if market:
         system += f"\nCurrent market context: {market} market."
 
-    messages = list(chat_history or []) + [{"role": "user", "content": message}]
-
-    # Record span input and model up front so it's visible even if the call errors
-    update_current_span(
+    agent = Agent(
+        name="stock-analyst",
         model=model,
-        input={"message": message, "market": market, "agent_type": agent_type},
+        instructions=system,
+        tools=[WebSearchTool(), *ALL_TOOLS],
     )
 
-    max_iterations = 10  # safety cap — prevents infinite loops
-    used_web_search = False
-    total_input_tokens = 0
-    total_output_tokens = 0
-    iterations = 0
-
-    for _ in range(max_iterations):
-        response = oai_client.chat.completions.create(
-            model=model,
-            messages=[{"role": "system", "content": system}] + messages,
-            tools=TOOL_SCHEMAS,
-            tool_choice="auto",
-            max_completion_tokens=4096,
-        )
-        iterations += 1
-
-        # Accumulate token usage across all LLM calls in this agent turn
-        if response.usage:
-            total_input_tokens += response.usage.prompt_tokens or 0
-            total_output_tokens += response.usage.completion_tokens or 0
-
-        choice  = response.choices[0]
-        message_obj = choice.message
-
-        # ── Done: LLM produced a final answer ──────────────────────────────
-        if choice.finish_reason == "stop":
-            text = message_obj.content or ""
-            update_current_span(
-                output={"response": text[:1000]},
-                usage={"input_tokens": total_input_tokens, "output_tokens": total_output_tokens},
-                metadata={"iterations": iterations, "used_web_search": used_web_search},
-            )
-            return text, context
-
-        # ── Tool calls requested ────────────────────────────────────────────
-        if choice.finish_reason == "tool_calls":
-            tool_calls = message_obj.tool_calls or []
-
-            # Append assistant turn (with tool_calls) to history
-            messages.append({
-                "role":       "assistant",
-                "content":    message_obj.content,
-                "tool_calls": [
-                    {
-                        "id":       tc.id,
-                        "type":     "function",
-                        "function": {
-                            "name":      tc.function.name,
-                            "arguments": tc.function.arguments,
-                        },
-                    }
-                    for tc in tool_calls
-                ],
-            })
-
-            # Execute each tool and append result
-            for tc in tool_calls:
-                tool_name = tc.function.name
-                try:
-                    tool_inputs = json.loads(tc.function.arguments)
-                except Exception:
-                    tool_inputs = {}
-
-                if tool_name == "web_search":
-                    used_web_search = True
-
-                result = execute_tool(tool_name, tool_inputs, context, data_dir)
-
-                messages.append({
-                    "role":         "tool",
-                    "tool_call_id": tc.id,
-                    "content":      str(result),
-                })
-
-            continue  # back to top of loop — ask LLM again with tool results
-
-        # Unexpected finish_reason — return whatever we have
-        text = message_obj.content or "Unable to complete the analysis."
-        update_current_span(
-            output={"response": text[:1000]},
-            usage={"input_tokens": total_input_tokens, "output_tokens": total_output_tokens},
-            metadata={"iterations": iterations, "finish_reason": choice.finish_reason},
-        )
-        return text, context
-
-    update_current_span(
-        output={"response": "max_iterations_reached"},
-        usage={"input_tokens": total_input_tokens, "output_tokens": total_output_tokens},
-        metadata={"iterations": iterations},
+    session = SQLiteSession(
+        session_id=session_id or "default",
+        db_path=_DB_PATH,
+        session_settings=SessionSettings(limit=session_limit),
     )
-    return "Reached maximum tool iterations without a final answer. Please try a more specific question.", context
+
+    async def _run():
+        result = await Runner.run(agent, input=message, session=session)
+        return result.final_output
+
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                future = pool.submit(asyncio.run, _run())
+                response = future.result()
+        else:
+            response = loop.run_until_complete(_run())
+    except Exception as e:
+        response = f"Agent error: {e}"
+
+    update_current_span(output={"response": response[:1000]})
+    return response, context

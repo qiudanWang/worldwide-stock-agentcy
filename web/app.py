@@ -1612,9 +1612,16 @@ def news_page():
         news_df = pd.concat(all_news, ignore_index=True)
         if "hit_count" not in news_df.columns:
             news_df["hit_count"] = 0
+        if "date" in news_df.columns:
+            news_df["date"] = pd.to_datetime(news_df["date"], errors="coerce")
+            if news_df["date"].dt.tz is not None:
+                news_df["date"] = news_df["date"].dt.tz_localize(None)
+            news_df["date_str"] = news_df["date"].dt.strftime("%Y-%m-%d %H:%M")
         if "title" in news_df.columns:
             news_df = news_df.sort_values("hit_count", ascending=False).drop_duplicates("title")
-        news_df = news_df.sort_values("hit_count", ascending=False)
+        # Sort newest first, keyword hits as secondary
+        sort_cols = [c for c in ["date", "hit_count"] if c in news_df.columns]
+        news_df = news_df.sort_values(sort_cols, ascending=[False, False])
         # Enrich with company name from master universe
         universe = get_master_universe()
         if not universe.empty and "name" in universe.columns:
@@ -2188,10 +2195,6 @@ def api_agent_chat():
     Accepts {"agent": "CN_data", "message": "top movers", "session_id": "...", "history": [...]}
     """
     from web.agent import agent_chat
-    from web.agent_llm import _call_llm
-    from web.chat_history import init_db, load_history, save_turn, needs_compaction, save_summary
-
-    init_db()
 
     body = request.get_json(force=True)
     agent_name = body.get("agent", "")
@@ -2214,44 +2217,19 @@ def api_agent_chat():
         else:
             return jsonify({"response": "Unknown agent format."}), 400
 
-    # Load history from SQLite if session_id provided, else fall back to frontend-passed history
-    if session_id:
-        history = load_history(session_id)
-    else:
-        history = body.get("history", [])
-
     # Try LLM-backed response first
     try:
         project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         data_dir = os.path.join(project_dir, "data")
         with using_attributes(session_id=session_id) if session_id else using_attributes():
-            result = agent_chat(agent_type, market, message, data_dir, history,
-                                language=language, context=context)
-        # agent_chat returns (response, context) tuple
+            result = agent_chat(agent_type, market, message, data_dir,
+                                language=language, context=context,
+                                session_id=session_id)
         if isinstance(result, tuple):
             llm_response, new_context = result
         else:
             llm_response, new_context = result, context
         if llm_response:
-            if session_id:
-                save_turn(session_id, message, llm_response)
-                if needs_compaction(session_id):
-                    try:
-                        old_msgs = load_history(session_id)
-                        turns_text = "\n".join(
-                            f"{m['role'].upper()}: {m['content']}" for m in old_msgs[:-12]
-                        )
-                        summary = _call_llm(
-                            "You are a helpful assistant. Summarize the following conversation concisely, "
-                            "preserving key facts, tickers, and decisions discussed.",
-                            [],
-                            turns_text,
-                            max_tokens=400,
-                        )
-                        if summary:
-                            save_summary(session_id, summary)
-                    except Exception as _e:
-                        app.logger.warning(f"Compaction failed: {_e}")
             return jsonify({"response": llm_response, "context": new_context})
     except Exception as e:
         app.logger.warning(f"LLM chat failed: {e}")
@@ -2452,7 +2430,7 @@ def api_backtest_run():
     if "strategy" in body and "signal" not in body:
         signal = {"type": "builtin", "name": body["strategy"]}
 
-    if timeframe not in ("daily", "weekly", "monthly", "yearly"):
+    if timeframe not in ("daily", "weekly", "monthly"):
         return jsonify({"error": f"Unknown timeframe {timeframe!r}"}), 400
 
     # Validate date format
@@ -2523,7 +2501,7 @@ def api_backtest_strategies():
             "default":    DEFAULTS[tf],
             "strategies": strategies_for_timeframe(tf),
         }
-        for tf in ("daily", "weekly", "monthly", "yearly")
+        for tf in ("daily", "weekly", "monthly")
     })
 
 

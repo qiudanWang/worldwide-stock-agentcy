@@ -81,6 +81,9 @@ def _parse_batch(raw: pd.DataFrame, yf_syms: list, ticker_map: dict, market: str
                     df = df.rename(columns={df.columns[0]: "date"})
                 if df.empty or "close" not in df.columns or df["close"].isna().all():
                     continue
+                df = df.dropna(subset=["close"])
+                if df.empty:
+                    continue
                 df["ticker"] = ticker_map[yf_sym]
                 df["market"] = market
                 df["volume"] = df.get("volume", 0)
@@ -97,6 +100,9 @@ def _parse_batch(raw: pd.DataFrame, yf_syms: list, ticker_map: dict, market: str
         if "date" not in df.columns:
             df = df.rename(columns={df.columns[0]: "date"})
         if not df.empty and "close" in df.columns and not df["close"].isna().all():
+            df = df.dropna(subset=["close"])
+            if df.empty:
+                return results
             yf_sym = yf_syms[0]
             df["ticker"] = ticker_map.get(yf_sym, yf_sym)
             df["market"] = market

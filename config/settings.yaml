@@ -36,6 +36,7 @@ refresh:
   news: daily
   capital_flow: daily
   macro: daily
+  market_cap_days: 3    # market cap cache TTL in days (fetch is slow; every 3 days is fine)
 
 # News tickers per market (key tickers for news fetching, not all stocks)
 news_tickers:
