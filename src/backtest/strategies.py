@@ -205,13 +205,103 @@ class MonthlySectorMomentum(BaseStrategy):
 
 
 # ---------------------------------------------------------------------------
+# Daily: ATR Breakout from Low Base
+# ---------------------------------------------------------------------------
+
+class DailyATRBreakoutLowBase(BaseStrategy):
+    """
+    Signal: today's price change > atr_mult × ATR(atr_period) AND positive return
+            AND today's close < 30th percentile of past price_pct_lookback closes.
+    Rank by breakout magnitude (price_change / ATR) desc. Rebalance daily.
+    """
+    name        = "daily_atr_breakout_low_base"
+    description = (
+        "ATR breakout (>1.5× ATR20) from low-base (below 30th pct of 60-day range) "
+        "with positive return — top 10 by breakout magnitude"
+    )
+    timeframe   = "daily"
+
+    def __init__(
+        self,
+        top_n: int = 10,
+        atr_mult: float = 1.5,
+        atr_period: int = 20,
+        price_pct_lookback: int = 60,
+        price_pct_threshold: float = 30.0,
+    ):
+        self.top_n               = top_n
+        self.atr_mult            = atr_mult
+        self.atr_period          = atr_period
+        self.price_pct_lookback  = price_pct_lookback
+        self.price_pct_threshold = price_pct_threshold
+
+    @observe(name="DailyATRBreakoutLowBase.select", type="tool")
+    def select(self, universe_df, history, date):
+        tickers = universe_df["ticker"].tolist()
+        date_np = date.to_datetime64()
+        needed  = max(self.atr_period + 2, self.price_pct_lookback + 1)
+
+        candidates = []
+        for tk in tickers:
+            df = history.get(tk)
+            if df is None or df.empty:
+                continue
+            idx = int(df["date"].values.searchsorted(date_np, side="right"))
+            if idx < needed:
+                continue
+
+            close  = df["close"].values[:idx]
+            high   = df["high"].values[:idx]
+            low    = df["low"].values[:idx]
+
+            # ATR(20): true range over last atr_period bars
+            tr = np.maximum(
+                high[-self.atr_period:] - low[-self.atr_period:],
+                np.maximum(
+                    np.abs(high[-self.atr_period:] - close[-(self.atr_period + 1):-1]),
+                    np.abs(low[-self.atr_period:]  - close[-(self.atr_period + 1):-1]),
+                ),
+            )
+            atr = tr.mean()
+            if atr <= 0:
+                continue
+
+            today_close = close[-1]
+            prev_close  = close[-2]
+            price_change = today_close - prev_close
+
+            # Condition 1: positive return
+            if price_change <= 0:
+                continue
+
+            # Condition 2: breakout > atr_mult × ATR
+            if price_change <= self.atr_mult * atr:
+                continue
+
+            # Condition 3: today's close below price_pct_threshold percentile
+            hist_closes = close[-self.price_pct_lookback:]
+            pct_val = np.percentile(hist_closes, self.price_pct_threshold)
+            if today_close >= pct_val:
+                continue
+
+            candidates.append((tk, price_change / atr))
+
+        if not candidates:
+            return []
+
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        return [tk for tk, _ in candidates[: self.top_n]]
+
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
 STRATEGIES: dict[str, BaseStrategy] = {
-    "daily_volume_breakout":       DailyVolumeBreakout(),
-    "weekly_momentum_5d":          WeeklyMomentum5d(),
-    "monthly_sector_momentum_20d": MonthlySectorMomentum(),
+    "daily_volume_breakout":        DailyVolumeBreakout(),
+    "daily_atr_breakout_low_base":  DailyATRBreakoutLowBase(),
+    "weekly_momentum_5d":           WeeklyMomentum5d(),
+    "monthly_sector_momentum_20d":  MonthlySectorMomentum(),
 }
 
 # Default strategy per timeframe
